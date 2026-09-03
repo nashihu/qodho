@@ -6,11 +6,10 @@
 # testing
 /coverage
 
-# next.js
+# next.js build outputs
 /.next/
 /out/
-
-# production
+/dist/
 /build
 
 # debug
@@ -22,8 +21,9 @@ yarn-error.log*
 .env*.local
 .env
 
-# vercel
+# vercel & netlify
 .vercel
+.netlify
 
 # OS metadata
 .DS_Store
