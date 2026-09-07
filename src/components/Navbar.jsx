@@ -1,15 +1,29 @@
 "use client";
 
 import React from 'react';
-import { Calendar, BookOpen, PlusCircle, Calculator } from 'lucide-react';
+import { Calendar, BookOpen, PlusCircle, Calculator, CalendarDays } from 'lucide-react';
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 
 export default function Navbar({ activeTab, setActiveTab }) {
+  const pathname = usePathname();
+  const router = useRouter();
+
   const tabs = [
     { id: 'lifetime', label: 'Ringkasan Lifetime', icon: Calculator },
     { id: 'manual', label: 'Tambah Qodho Udzur', icon: PlusCircle },
     { id: 'articles', label: 'Artikel & Panduan', icon: BookOpen },
   ];
+
+  const handleTabClick = (tabId) => {
+    if (pathname === '/') {
+      if (typeof setActiveTab === 'function') {
+        setActiveTab(tabId);
+      }
+    } else {
+      router.push(`/?tab=${tabId}`);
+    }
+  };
 
   return (
     <header className="bg-emerald-900 text-white shadow-md sticky top-0 z-50">
@@ -29,11 +43,11 @@ export default function Navbar({ activeTab, setActiveTab }) {
         <nav className="flex items-center gap-1.5 bg-emerald-950/60 p-1.5 rounded-xl border border-emerald-800/80 w-full md:w-auto overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+            const isActive = pathname === '/' && activeTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
+                onClick={() => handleTabClick(tab.id)}
                 className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs md:text-sm font-medium transition-all whitespace-nowrap ${
                   isActive
                     ? 'bg-emerald-600 text-white shadow-md'
@@ -47,8 +61,24 @@ export default function Navbar({ activeTab, setActiveTab }) {
           })}
 
           <Link
+            href="/kalender"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-bold border transition-colors whitespace-nowrap ml-1 ${
+              pathname === '/kalender'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                : 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-700'
+            }`}
+          >
+            <CalendarDays className="w-4 h-4 text-emerald-300" />
+            <span>Kalender</span>
+          </Link>
+
+          <Link
             href="/kalkulator"
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-bold bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border border-emerald-700 transition-colors whitespace-nowrap ml-1"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-bold border transition-colors whitespace-nowrap ${
+              pathname === '/kalkulator'
+                ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
+                : 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-700'
+            }`}
           >
             <Calculator className="w-4 h-4 text-emerald-300" />
             <span>Kalkulator</span>

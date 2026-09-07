@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles } from 'lucide-react';
+import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar } from 'lucide-react';
 import Link from 'next/link';
 
 const PRAYERS = [
@@ -13,6 +13,9 @@ const PRAYERS = [
 ];
 
 export default function LifetimeSummary() {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [customTotalDays, setCustomTotalDays] = useState(null);
   const [years, setYears] = useState(1);
   const [months, setMonths] = useState(0);
   const [completed, setCompleted] = useState({
@@ -29,6 +32,9 @@ export default function LifetimeSummary() {
       const saved = localStorage.getItem('qodho_lifetime_data');
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (parsed.startDate) setStartDate(parsed.startDate);
+        if (parsed.endDate) setEndDate(parsed.endDate);
+        if (typeof parsed.totalDays === 'number') setCustomTotalDays(parsed.totalDays);
         if (typeof parsed.years === 'number') setYears(parsed.years);
         if (typeof parsed.months === 'number') setMonths(parsed.months);
         if (parsed.completed) setCompleted(parsed.completed);
@@ -61,13 +67,22 @@ export default function LifetimeSummary() {
   useEffect(() => {
     if (!isLoaded) return;
     try {
-      localStorage.setItem('qodho_lifetime_data', JSON.stringify({ years, months, completed }));
+      const payload = {
+        startDate,
+        endDate,
+        totalDays: customTotalDays,
+        years,
+        months,
+        completed
+      };
+      localStorage.setItem('qodho_lifetime_data', JSON.stringify(payload));
     } catch (e) {
       console.error('Failed to save lifetime data', e);
     }
-  }, [years, months, completed, isLoaded]);
+  }, [startDate, endDate, customTotalDays, years, months, completed, isLoaded]);
 
-  const totalDays = Math.max(0, Math.floor((years || 0) * 365 + (months || 0) * 30.41));
+  const computedDays = Math.max(0, Math.floor((years || 0) * 365 + (months || 0) * 30.41));
+  const totalDays = customTotalDays !== null && customTotalDays !== undefined ? customTotalDays : computedDays;
   const initialPerPrayer = totalDays;
   const initialTotalPrayers = totalDays * 5;
 
@@ -90,6 +105,17 @@ export default function LifetimeSummary() {
     }
   };
 
+  const formatReadableDate = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Calculation Summary Bar & Link to Kalkulator Page */}
@@ -99,14 +125,21 @@ export default function LifetimeSummary() {
             <Calculator className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-bold text-slate-800">Estimasi Durasi Qodho</h2>
-              <span className="text-xs bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-full">
-                {years} Tahun {months > 0 ? `${months} Bulan` : ''}
-              </span>
+              {startDate && endDate ? (
+                <span className="text-xs bg-emerald-100 text-emerald-900 font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Calendar className="w-3 h-3 text-emerald-700" />
+                  {formatReadableDate(startDate)} &mdash; {formatReadableDate(endDate)} ({totalDays.toLocaleString('id-ID')} Hari)
+                </span>
+              ) : (
+                <span className="text-xs bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-full">
+                  {years} Tahun {months > 0 ? `${months} Bulan` : ''}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Setara {totalDays.toLocaleString('id-ID')} hari ({initialPerPrayer.toLocaleString('id-ID')} kali per waktu sholat)
+              Total {totalDays.toLocaleString('id-ID')} hari ({initialPerPrayer.toLocaleString('id-ID')} kali per waktu sholat fardhu)
             </p>
           </div>
         </div>
