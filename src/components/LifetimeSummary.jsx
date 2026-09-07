@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar } from 'lucide-react';
+import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info } from 'lucide-react';
 import Link from 'next/link';
 
 const PRAYERS = [
@@ -16,7 +16,7 @@ export default function LifetimeSummary() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [customTotalDays, setCustomTotalDays] = useState(null);
-  const [years, setYears] = useState(1);
+  const [years, setYears] = useState(0);
   const [months, setMonths] = useState(0);
   const [completed, setCompleted] = useState({
     subuh: 0,
@@ -118,6 +118,29 @@ export default function LifetimeSummary() {
 
   return (
     <div className="space-y-8">
+      {/* Zero State Onboarding Banner if no duration set */}
+      {totalDays === 0 && (
+        <div className="bg-amber-50 border border-amber-200/90 rounded-2xl p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="bg-amber-500 text-white p-2.5 rounded-xl shrink-0 shadow-xs">
+              <Info className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-amber-950">Belum Ada Durasi Qodho Yang Diatur</h3>
+              <p className="text-xs text-amber-800 mt-0.5">
+                Hitungan default sholat fardhu masih 0. Atur rentang tanggal atau estimasi durasi waktu tidak sholat terlebih dahulu.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/kalkulator"
+            className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow transition-all text-center shrink-0"
+          >
+            Atur Durasi di Kalkulator
+          </Link>
+        </div>
+      )}
+
       {/* Calculation Summary Bar & Link to Kalkulator Page */}
       <div className="bg-white rounded-2xl p-5 shadow-sm border border-emerald-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
