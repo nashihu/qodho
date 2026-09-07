@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info } from 'lucide-react';
+import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info, Ban } from 'lucide-react';
 import Link from 'next/link';
 
 const PRAYERS = [
@@ -18,6 +18,13 @@ export default function LifetimeSummary() {
   const [customTotalDays, setCustomTotalDays] = useState(null);
   const [years, setYears] = useState(0);
   const [months, setMonths] = useState(0);
+  const [selectedPrayers, setSelectedPrayers] = useState({
+    subuh: true,
+    dzuhur: true,
+    ashar: true,
+    maghrib: true,
+    isya: true,
+  });
   const [completed, setCompleted] = useState({
     subuh: 0,
     dzuhur: 0,
@@ -37,6 +44,7 @@ export default function LifetimeSummary() {
         if (typeof parsed.totalDays === 'number') setCustomTotalDays(parsed.totalDays);
         if (typeof parsed.years === 'number') setYears(parsed.years);
         if (typeof parsed.months === 'number') setMonths(parsed.months);
+        if (parsed.selectedPrayers) setSelectedPrayers(parsed.selectedPrayers);
         if (parsed.completed) setCompleted(parsed.completed);
       }
     } catch (e) {
@@ -73,18 +81,24 @@ export default function LifetimeSummary() {
         totalDays: customTotalDays,
         years,
         months,
+        selectedPrayers,
         completed
       };
       localStorage.setItem('qodho_lifetime_data', JSON.stringify(payload));
     } catch (e) {
       console.error('Failed to save lifetime data', e);
     }
-  }, [startDate, endDate, customTotalDays, years, months, completed, isLoaded]);
+  }, [startDate, endDate, customTotalDays, years, months, selectedPrayers, completed, isLoaded]);
 
   const computedDays = Math.max(0, Math.floor((years || 0) * 365 + (months || 0) * 30.41));
   const totalDays = customTotalDays !== null && customTotalDays !== undefined ? customTotalDays : computedDays;
-  const initialPerPrayer = totalDays;
-  const initialTotalPrayers = totalDays * 5;
+
+  const getInitialForPrayer = (prayerId) => {
+    return (selectedPrayers && selectedPrayers[prayerId] === false) ? 0 : totalDays;
+  };
+
+  const initialTotalPrayers = PRAYERS.reduce((acc, p) => acc + getInitialForPrayer(p.id), 0);
+  const selectedPrayerCount = Object.values(selectedPrayers || {}).filter(Boolean).length;
 
   const totalCompleted = Object.values(completed).reduce((a, b) => a + b, 0);
   const totalRemaining = Math.max(0, initialTotalPrayers - totalCompleted);
@@ -160,9 +174,12 @@ export default function LifetimeSummary() {
                   {years} Tahun {months > 0 ? `${months} Bulan` : ''}
                 </span>
               )}
+              <span className="text-xs bg-slate-100 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">
+                {selectedPrayerCount}/5 Waktu Sholat Terpilih
+              </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Total {totalDays.toLocaleString('id-ID')} hari ({initialPerPrayer.toLocaleString('id-ID')} kali per waktu sholat fardhu)
+              Total {totalDays.toLocaleString('id-ID')} hari ({initialTotalPrayers.toLocaleString('id-ID')} total utang sholat terpilih)
             </p>
           </div>
         </div>
@@ -196,7 +213,7 @@ export default function LifetimeSummary() {
           <div className="space-y-1">
             <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider">Total Hutang Sholat</span>
             <div className="text-3xl font-extrabold">{initialTotalPrayers.toLocaleString('id-ID')} <span className="text-sm font-normal text-emerald-200">kali</span></div>
-            <p className="text-xs text-emerald-300">Total 5 waktu sholat fardhu</p>
+            <p className="text-xs text-emerald-300">Total {selectedPrayerCount} waktu sholat terpilih</p>
           </div>
 
           <div className="space-y-1">
@@ -242,16 +259,20 @@ export default function LifetimeSummary() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {PRAYERS.map((prayer) => {
+            const isSelected = selectedPrayers ? selectedPrayers[prayer.id] !== false : true;
+            const initialForPrayer = isSelected ? totalDays : 0;
             const done = completed[prayer.id] || 0;
-            const remaining = Math.max(0, initialPerPrayer - done);
-            const prayerPercent = initialPerPrayer > 0 
-              ? Math.min(100, Math.round((done / initialPerPrayer) * 100))
-              : 0;
+            const remaining = Math.max(0, initialForPrayer - done);
+            const prayerPercent = initialForPrayer > 0 
+              ? Math.min(100, Math.round((done / initialForPrayer) * 100))
+              : (isSelected ? 0 : 100);
 
             return (
               <div
                 key={prayer.id}
-                className="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 hover:shadow-md transition-shadow flex flex-col justify-between"
+                className={`bg-white rounded-2xl p-5 shadow-sm border transition-shadow flex flex-col justify-between ${
+                  isSelected ? 'border-slate-100 hover:shadow-md' : 'border-slate-200 bg-slate-50/60 opacity-60'
+                }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-3">
@@ -259,23 +280,30 @@ export default function LifetimeSummary() {
                       {prayer.name}
                     </span>
                     <span className="text-xs text-slate-500 font-medium">
-                      {done} / {initialPerPrayer} Selesai
+                      {isSelected ? `${done} / ${initialForPrayer} Selesai` : 'Tidak Ditinggalkan'}
                     </span>
                   </div>
 
-                  <div className="my-2">
-                    <div className="text-xs text-slate-500 mb-1">Sisa yang harus di-qodho:</div>
-                    <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
-                      {remaining.toLocaleString('id-ID')}
-                      <span className="text-xs font-normal text-slate-500 ml-1">kali lagi</span>
+                  {isSelected ? (
+                    <div className="my-2">
+                      <div className="text-xs text-slate-500 mb-1">Sisa yang harus di-qodho:</div>
+                      <div className="text-3xl font-extrabold text-slate-900 tracking-tight">
+                        {remaining.toLocaleString('id-ID')}
+                        <span className="text-xs font-normal text-slate-500 ml-1">kali lagi</span>
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="my-3 py-1 flex items-center gap-2 text-xs text-slate-500 font-semibold">
+                      <Ban className="w-4 h-4 text-slate-400" />
+                      <span>Sholat ini tidak dicentang di Kalkulator</span>
+                    </div>
+                  )}
 
                   {/* Prayer progress bar */}
                   <div className="w-full bg-slate-100 rounded-full h-2 my-3 overflow-hidden">
                     <div
                       className={`h-full bg-gradient-to-r ${prayer.color} transition-all duration-300`}
-                      style={{ width: `${prayerPercent}%` }}
+                      style={{ width: isSelected ? `${prayerPercent}%` : '0%' }}
                     />
                   </div>
                 </div>
@@ -284,7 +312,8 @@ export default function LifetimeSummary() {
                 <div className="pt-3 border-t border-slate-100 space-y-2">
                   <button
                     onClick={() => handleIncrement(prayer.id, 1)}
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow border border-emerald-700 transition-all flex items-center justify-center gap-2 text-sm active:scale-[0.98]"
+                    disabled={!isSelected}
+                    className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold py-2.5 px-4 rounded-xl shadow border border-emerald-700 disabled:border-slate-300 transition-all flex items-center justify-center gap-2 text-sm active:scale-[0.98]"
                   >
                     <CheckCircle2 className="w-4 h-4 text-emerald-200" />
                     <span>Sudah Qodho {prayer.name} (-1)</span>
@@ -293,14 +322,15 @@ export default function LifetimeSummary() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => handleIncrement(prayer.id, 5)}
-                      className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1"
+                      disabled={!isSelected}
+                      className="flex-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1"
                     >
                       <Plus className="w-3.5 h-3.5" />
                       <span>+5 Qodho</span>
                     </button>
                     <button
                       onClick={() => handleIncrement(prayer.id, -1)}
-                      disabled={done <= 0}
+                      disabled={!isSelected || done <= 0}
                       className="bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 disabled:opacity-40 font-semibold py-1.5 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1 border border-slate-200"
                       title="Batal / Kurangi hitungan selesai"
                     >

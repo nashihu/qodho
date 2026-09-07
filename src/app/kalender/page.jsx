@@ -13,7 +13,8 @@ import {
   Info,
   Sparkles,
   Check,
-  X
+  X,
+  Ban
 } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
@@ -30,6 +31,13 @@ export default function KalenderPage() {
   const [customTotalDays, setCustomTotalDays] = useState(null);
   const [years, setYears] = useState(1);
   const [months, setMonths] = useState(0);
+  const [selectedPrayers, setSelectedPrayers] = useState({
+    subuh: true,
+    dzuhur: true,
+    ashar: true,
+    maghrib: true,
+    isya: true,
+  });
   const [completed, setCompleted] = useState({
     subuh: 0,
     dzuhur: 0,
@@ -50,6 +58,7 @@ export default function KalenderPage() {
         if (typeof parsed.totalDays === 'number') setCustomTotalDays(parsed.totalDays);
         if (typeof parsed.years === 'number') setYears(parsed.years);
         if (typeof parsed.months === 'number') setMonths(parsed.months);
+        if (parsed.selectedPrayers) setSelectedPrayers(parsed.selectedPrayers);
         if (parsed.completed) setCompleted(parsed.completed);
 
         // If startDate exists, initialize calendar view to startDate month
@@ -78,10 +87,6 @@ export default function KalenderPage() {
     };
   }, []);
 
-  // Compute overall Qodho stats
-  const computedDays = Math.max(0, Math.floor((years || 0) * 365 + (months || 0) * 30.41));
-  const totalDays = customTotalDays !== null && customTotalDays !== undefined ? customTotalDays : computedDays;
-
   // Helper to format Date to YYYY-MM-DD
   const formatDateStr = (year, month, day) => {
     const y = year;
@@ -90,7 +95,7 @@ export default function KalenderPage() {
     return `${y}-${m}-${d}`;
   };
 
-  // Get status for a specific date (YYYY-MM-DD) based on individual 5 prayers
+  // Get status for a specific date (YYYY-MM-DD) based on individual selected prayers
   const getDayStatus = (dateStr) => {
     if (!startDate || !endDate || !dateStr) return { type: 'normal' };
 
@@ -108,33 +113,48 @@ export default function KalenderPage() {
     // Calculate dayIndex from startDate (0-indexed)
     const dayIndex = Math.round((target - start) / (1000 * 60 * 60 * 24));
 
-    const subuhDone = (completed?.subuh || 0) > dayIndex;
-    const dzuhurDone = (completed?.dzuhur || 0) > dayIndex;
-    const asharDone = (completed?.ashar || 0) > dayIndex;
-    const maghribDone = (completed?.maghrib || 0) > dayIndex;
-    const isyaDone = (completed?.isya || 0) > dayIndex;
+    const isSubuhReq = selectedPrayers ? selectedPrayers.subuh !== false : true;
+    const isDzuhurReq = selectedPrayers ? selectedPrayers.dzuhur !== false : true;
+    const isAsharReq = selectedPrayers ? selectedPrayers.ashar !== false : true;
+    const isMaghribReq = selectedPrayers ? selectedPrayers.maghrib !== false : true;
+    const isIsyaReq = selectedPrayers ? selectedPrayers.isya !== false : true;
 
-    const prayersPaid = (subuhDone ? 1 : 0) + (dzuhurDone ? 1 : 0) + (asharDone ? 1 : 0) + (maghribDone ? 1 : 0) + (isyaDone ? 1 : 0);
+    const subuhDone = isSubuhReq ? ((completed?.subuh || 0) > dayIndex) : true;
+    const dzuhurDone = isDzuhurReq ? ((completed?.dzuhur || 0) > dayIndex) : true;
+    const asharDone = isAsharReq ? ((completed?.ashar || 0) > dayIndex) : true;
+    const maghribDone = isMaghribReq ? ((completed?.maghrib || 0) > dayIndex) : true;
+    const isyaDone = isIsyaReq ? ((completed?.isya || 0) > dayIndex) : true;
+
+    const requiredCount = (isSubuhReq ? 1 : 0) + (isDzuhurReq ? 1 : 0) + (isAsharReq ? 1 : 0) + (isMaghribReq ? 1 : 0) + (isIsyaReq ? 1 : 0);
+    
+    if (requiredCount === 0) return { type: 'normal' };
+
+    const paidCount = (isSubuhReq && ((completed?.subuh || 0) > dayIndex) ? 1 : 0) +
+                      (isDzuhurReq && ((completed?.dzuhur || 0) > dayIndex) ? 1 : 0) +
+                      (isAsharReq && ((completed?.ashar || 0) > dayIndex) ? 1 : 0) +
+                      (isMaghribReq && ((completed?.maghrib || 0) > dayIndex) ? 1 : 0) +
+                      (isIsyaReq && ((completed?.isya || 0) > dayIndex) ? 1 : 0);
 
     const prayerDetails = {
-      subuh: subuhDone,
-      dzuhur: dzuhurDone,
-      ashar: asharDone,
-      maghrib: maghribDone,
-      isya: isyaDone
+      subuh: { required: isSubuhReq, done: isSubuhReq ? ((completed?.subuh || 0) > dayIndex) : false },
+      dzuhur: { required: isDzuhurReq, done: isDzuhurReq ? ((completed?.dzuhur || 0) > dayIndex) : false },
+      ashar: { required: isAsharReq, done: isAsharReq ? ((completed?.ashar || 0) > dayIndex) : false },
+      maghrib: { required: isMaghribReq, done: isMaghribReq ? ((completed?.maghrib || 0) > dayIndex) : false },
+      isya: { required: isIsyaReq, done: isIsyaReq ? ((completed?.isya || 0) > dayIndex) : false },
     };
 
-    if (prayersPaid === 5) {
-      return { type: 'green', prayersPaid: 5, label: 'Lunas (5/5 Sholat)', prayerDetails };
-    } else if (prayersPaid > 0) {
+    if (paidCount === requiredCount) {
+      return { type: 'green', prayersPaid: paidCount, totalRequired: requiredCount, label: `Lunas (${paidCount}/${requiredCount} Sholat)`, prayerDetails };
+    } else if (paidCount > 0) {
       return {
         type: 'partial',
-        prayersPaid,
-        label: `Progress (${prayersPaid}/5 Sholat)`,
+        prayersPaid: paidCount,
+        totalRequired: requiredCount,
+        label: `Progress (${paidCount}/${requiredCount} Sholat)`,
         prayerDetails
       };
     } else {
-      return { type: 'red', prayersPaid: 0, label: 'Utang (0/5 Sholat)', prayerDetails };
+      return { type: 'red', prayersPaid: 0, totalRequired: requiredCount, label: `Utang (0/${requiredCount} Sholat)`, prayerDetails };
     }
   };
 
@@ -199,7 +219,7 @@ export default function KalenderPage() {
     else if (st.type === 'red') monthRedCount++;
   }
 
-  // Compute total days in range that are 5/5 green vs partial vs red
+  // Compute total days in range that are green vs partial vs red
   let totalGreenDays = 0;
   let totalPartialDays = 0;
   let totalRedDays = 0;
@@ -210,14 +230,22 @@ export default function KalenderPage() {
     if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
       const numDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
       for (let i = 0; i < numDays; i++) {
-        const subuhDone = (completed?.subuh || 0) > i;
-        const dzuhurDone = (completed?.dzuhur || 0) > i;
-        const asharDone = (completed?.ashar || 0) > i;
-        const maghribDone = (completed?.maghrib || 0) > i;
-        const isyaDone = (completed?.isya || 0) > i;
+        const isSubuhReq = selectedPrayers ? selectedPrayers.subuh !== false : true;
+        const isDzuhurReq = selectedPrayers ? selectedPrayers.dzuhur !== false : true;
+        const isAsharReq = selectedPrayers ? selectedPrayers.ashar !== false : true;
+        const isMaghribReq = selectedPrayers ? selectedPrayers.maghrib !== false : true;
+        const isIsyaReq = selectedPrayers ? selectedPrayers.isya !== false : true;
 
-        const paid = (subuhDone ? 1 : 0) + (dzuhurDone ? 1 : 0) + (asharDone ? 1 : 0) + (maghribDone ? 1 : 0) + (isyaDone ? 1 : 0);
-        if (paid === 5) totalGreenDays++;
+        const reqCount = (isSubuhReq ? 1 : 0) + (isDzuhurReq ? 1 : 0) + (isAsharReq ? 1 : 0) + (isMaghribReq ? 1 : 0) + (isIsyaReq ? 1 : 0);
+        if (reqCount === 0) continue;
+
+        const paid = (isSubuhReq && ((completed?.subuh || 0) > i) ? 1 : 0) +
+                     (isDzuhurReq && ((completed?.dzuhur || 0) > i) ? 1 : 0) +
+                     (isAsharReq && ((completed?.ashar || 0) > i) ? 1 : 0) +
+                     (isMaghribReq && ((completed?.maghrib || 0) > i) ? 1 : 0) +
+                     (isIsyaReq && ((completed?.isya || 0) > i) ? 1 : 0);
+
+        if (paid === reqCount) totalGreenDays++;
         else if (paid > 0) totalPartialDays++;
         else totalRedDays++;
       }
@@ -263,7 +291,7 @@ export default function KalenderPage() {
               <div>
                 <h1 className="text-2xl font-extrabold tracking-wide">Kalender Qodho Sholat</h1>
                 <p className="text-xs text-emerald-300 mt-1">
-                  Setiap hari melacak 5 sholat (*Subuh, Dzuhur, Ashar, Maghrib, Isya*). Lunas jika kelima sholat selesai.
+                  Visualisasi sholat terpilih yang terlewat per hari (Merah = Utang, Opacity = Sebagian, Hijau = Lunas)
                 </p>
               </div>
             </div>
@@ -283,7 +311,7 @@ export default function KalenderPage() {
                 </div>
               </div>
               <div className="px-3 py-1.5 rounded-xl bg-emerald-900/60 border border-emerald-700/60">
-                <div className="text-[10px] text-emerald-300 font-medium">Lunas (5/5)</div>
+                <div className="text-[10px] text-emerald-300 font-medium">Lunas</div>
                 <div className="text-base font-extrabold text-emerald-200">
                   {totalGreenDays} <span className="text-[10px]">hari</span>
                 </div>
@@ -309,11 +337,11 @@ export default function KalenderPage() {
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-4 h-4 rounded-md bg-amber-400 inline-block shadow-xs"></span>
-              <span className="text-slate-700">Sebagian (1/5 s.d 4/5 Opacity)</span>
+              <span className="text-slate-700">Sebagian (Progress Opacity)</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-4 h-4 rounded-md bg-emerald-500 inline-block shadow-xs"></span>
-              <span className="text-slate-700">Lunas (5/5 Green)</span>
+              <span className="text-slate-700">Lunas (Green)</span>
             </div>
           </div>
         </div>
@@ -378,24 +406,22 @@ export default function KalenderPage() {
 
               if (status.type === 'green') {
                 cellClasses = 'bg-emerald-500 border-emerald-600 text-white font-black shadow-sm hover:bg-emerald-600';
-                badgeText = '✓ 5/5';
+                badgeText = `✓ ${status.prayersPaid}/${status.totalRequired}`;
               } else if (status.type === 'red') {
                 cellClasses = 'bg-rose-500 border-rose-600 text-white font-black shadow-sm hover:bg-rose-600';
-                badgeText = '0/5';
+                badgeText = `0/${status.totalRequired}`;
               } else if (status.type === 'partial') {
-                if (status.prayersPaid === 1) {
+                const ratio = status.prayersPaid / status.totalRequired;
+                if (ratio <= 0.25) {
                   cellClasses = 'bg-rose-400/60 border-2 border-rose-500 text-rose-950 font-black hover:bg-rose-400/80';
-                  badgeText = '1/5';
-                } else if (status.prayersPaid === 2) {
+                } else if (ratio <= 0.5) {
                   cellClasses = 'bg-amber-400/70 border-2 border-amber-500 text-amber-950 font-black hover:bg-amber-400/90';
-                  badgeText = '2/5';
-                } else if (status.prayersPaid === 3) {
+                } else if (ratio <= 0.75) {
                   cellClasses = 'bg-emerald-400/70 border-2 border-emerald-500 text-emerald-950 font-black hover:bg-emerald-400/90';
-                  badgeText = '3/5';
-                } else if (status.prayersPaid === 4) {
+                } else {
                   cellClasses = 'bg-emerald-500/85 border-2 border-emerald-600 text-white font-black hover:bg-emerald-500';
-                  badgeText = '4/5';
                 }
+                badgeText = `${status.prayersPaid}/${status.totalRequired}`;
               }
 
               return (
@@ -421,7 +447,7 @@ export default function KalenderPage() {
           <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-2">
             <span>Ringkasan {monthNames[month]} {year}:</span>
             <div className="flex items-center gap-3 font-semibold">
-              <span className="text-emerald-700">🟢 {monthGreenCount} Hari Lunas (5/5)</span>
+              <span className="text-emerald-700">🟢 {monthGreenCount} Hari Lunas</span>
               <span className="text-amber-700">🟡 {monthPartialCount} Hari Progress</span>
               <span className="text-rose-700">🔴 {monthRedCount} Hari Utang</span>
             </div>
@@ -463,17 +489,17 @@ export default function KalenderPage() {
                 <div className="text-sm font-black flex items-center gap-2">
                   {selectedDayDetail.status.type === 'green' && (
                     <span className="text-emerald-600 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-5 h-5" /> 🟢 Lunas (5/5 Sholat Selesai)
+                      <CheckCircle2 className="w-5 h-5" /> 🟢 Lunas ({selectedDayDetail.status.prayersPaid}/{selectedDayDetail.status.totalRequired} Sholat Selesai)
                     </span>
                   )}
                   {selectedDayDetail.status.type === 'partial' && (
                     <span className="text-amber-600 flex items-center gap-1.5">
-                      <Clock className="w-5 h-5" /> 🟡 Progress ({selectedDayDetail.status.prayersPaid}/5 Sholat Terbayar)
+                      <Clock className="w-5 h-5" /> 🟡 Progress ({selectedDayDetail.status.prayersPaid}/{selectedDayDetail.status.totalRequired} Sholat Terbayar)
                     </span>
                   )}
                   {selectedDayDetail.status.type === 'red' && (
                     <span className="text-rose-600 flex items-center gap-1.5">
-                      <AlertCircle className="w-5 h-5" /> 🔴 Belum Di-qodho (0/5 Sholat Terbayar)
+                      <AlertCircle className="w-5 h-5" /> 🔴 Belum Di-qodho (0/{selectedDayDetail.status.totalRequired} Sholat Terbayar)
                     </span>
                   )}
                   {selectedDayDetail.status.type === 'normal' && (
@@ -487,7 +513,7 @@ export default function KalenderPage() {
               {/* Individual 5 Prayers Breakdown Checklist */}
               {selectedDayDetail.status.type !== 'normal' && selectedDayDetail.status.prayerDetails && (
                 <div className="space-y-2 pt-1">
-                  <div className="text-xs font-bold text-slate-700">Rincian 5 Waktu Sholat:</div>
+                  <div className="text-xs font-bold text-slate-700">Rincian Waktu Sholat:</div>
                   <div className="grid grid-cols-1 gap-2">
                     {[
                       { key: 'subuh', label: 'Subuh' },
@@ -496,7 +522,23 @@ export default function KalenderPage() {
                       { key: 'maghrib', label: 'Maghrib' },
                       { key: 'isya', label: 'Isya' },
                     ].map((p) => {
-                      const isDone = selectedDayDetail.status.prayerDetails[p.key];
+                      const item = selectedDayDetail.status.prayerDetails[p.key];
+                      if (!item || !item.required) {
+                        return (
+                          <div
+                            key={p.key}
+                            className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-400 flex items-center justify-between opacity-60"
+                          >
+                            <span className="flex items-center gap-2">
+                              <Ban className="w-4 h-4 text-slate-400" />
+                              {p.label}
+                            </span>
+                            <span className="text-[10px]">Tidak Ditagihkan</span>
+                          </div>
+                        );
+                      }
+
+                      const isDone = item.done;
                       return (
                         <div
                           key={p.key}
