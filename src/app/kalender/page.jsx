@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
+import { computePeriodsRequirement } from '../../utils/qodhoCalculator';
 
 export default function KalenderPage() {
   const router = useRouter();
@@ -26,6 +27,7 @@ export default function KalenderPage() {
   const [currentDate, setCurrentDate] = useState(new Date());
 
   // Qodho data from localStorage
+  const [periods, setPeriods] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [customTotalDays, setCustomTotalDays] = useState(null);
@@ -53,6 +55,7 @@ export default function KalenderPage() {
       const saved = localStorage.getItem('qodho_lifetime_data');
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (parsed.periods && Array.isArray(parsed.periods)) setPeriods(parsed.periods);
         if (parsed.startDate) setStartDate(parsed.startDate);
         if (parsed.endDate) setEndDate(parsed.endDate);
         if (typeof parsed.totalDays === 'number') setCustomTotalDays(parsed.totalDays);
@@ -62,8 +65,9 @@ export default function KalenderPage() {
         if (parsed.completed) setCompleted(parsed.completed);
 
         // If startDate exists, initialize calendar view to startDate month
-        if (parsed.startDate) {
-          const d = new Date(parsed.startDate);
+        const startToUse = (parsed.periods && parsed.periods[0]?.startDate) || parsed.startDate;
+        if (startToUse) {
+          const d = new Date(startToUse);
           if (!isNaN(d.getTime())) {
             setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1));
           }
@@ -95,22 +99,78 @@ export default function KalenderPage() {
     return `${y}-${m}-${d}`;
   };
 
-  // Get status for a specific date (YYYY-MM-DD) based on individual selected prayers
+  const hasPeriods = periods && periods.length > 0;
+  const merged = hasPeriods ? computePeriodsRequirement(periods) : null;
+
+  const activeStartDate = hasPeriods ? merged.minStartDate : startDate;
+  const activeEndDate = hasPeriods ? merged.maxEndDate : endDate;
+
+  // Build sorted list of dates in range that require each prayer type
+  const sortedDates = merged && merged.dateMap ? Array.from(merged.dateMap.keys()).sort() : [];
+
+  // Indices map for each prayer type: prayer -> Map<dateStr, index>
+  const prayerIndicesMap = {
+    subuh: new Map(),
+    dzuhur: new Map(),
+    ashar: new Map(),
+    maghrib: new Map(),
+    isya: new Map(),
+  };
+
+  let counts = { subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 };
+  sortedDates.forEach((dStr) => {
+    const req = merged.getDayPrayerRequirements(dStr);
+    ['subuh', 'dzuhur', 'ashar', 'maghrib', 'isya'].forEach((pKey) => {
+      if (req[pKey]) {
+        prayerIndicesMap[pKey].set(dStr, counts[pKey]);
+        counts[pKey]++;
+      }
+    });
+  });
+
+  // Get status for a specific date (YYYY-MM-DD)
   const getDayStatus = (dateStr) => {
+    if (hasPeriods && merged) {
+      const req = merged.getDayPrayerRequirements(dateStr);
+      if (req.requiredCount === 0) return { type: 'normal' };
+
+      const pKeys = ['subuh', 'dzuhur', 'ashar', 'maghrib', 'isya'];
+      let paidCount = 0;
+
+      const prayerDetails = {};
+      pKeys.forEach((pKey) => {
+        const isReq = req[pKey];
+        if (isReq) {
+          const idx = prayerIndicesMap[pKey].get(dateStr);
+          const isDone = typeof idx === 'number' && (completed?.[pKey] || 0) > idx;
+          if (isDone) paidCount++;
+          prayerDetails[pKey] = { required: true, done: isDone };
+        } else {
+          prayerDetails[pKey] = { required: false, done: false };
+        }
+      });
+
+      const requiredCount = req.requiredCount;
+      if (paidCount === requiredCount) {
+        return { type: 'green', prayersPaid: paidCount, totalRequired: requiredCount, label: `Lunas (${paidCount}/${requiredCount} Sholat)`, prayerDetails };
+      } else if (paidCount > 0) {
+        return { type: 'partial', prayersPaid: paidCount, totalRequired: requiredCount, label: `Progress (${paidCount}/${requiredCount} Sholat)`, prayerDetails };
+      } else {
+        return { type: 'red', prayersPaid: 0, totalRequired: requiredCount, label: `Utang (0/${requiredCount} Sholat)`, prayerDetails };
+      }
+    }
+
+    // Fallback legacy calculation
     if (!startDate || !endDate || !dateStr) return { type: 'normal' };
 
     const target = new Date(dateStr).getTime();
     const start = new Date(startDate).getTime();
     const end = new Date(endDate).getTime();
 
-    if (isNaN(target) || isNaN(start) || isNaN(end)) return { type: 'normal' };
-
-    // Check if target date is outside range
-    if (target < start || target > end) {
+    if (isNaN(target) || isNaN(start) || isNaN(end) || target < start || target > end) {
       return { type: 'normal' };
     }
 
-    // Calculate dayIndex from startDate (0-indexed)
     const dayIndex = Math.round((target - start) / (1000 * 60 * 60 * 24));
 
     const isSubuhReq = selectedPrayers ? selectedPrayers.subuh !== false : true;
@@ -119,14 +179,7 @@ export default function KalenderPage() {
     const isMaghribReq = selectedPrayers ? selectedPrayers.maghrib !== false : true;
     const isIsyaReq = selectedPrayers ? selectedPrayers.isya !== false : true;
 
-    const subuhDone = isSubuhReq ? ((completed?.subuh || 0) > dayIndex) : true;
-    const dzuhurDone = isDzuhurReq ? ((completed?.dzuhur || 0) > dayIndex) : true;
-    const asharDone = isAsharReq ? ((completed?.ashar || 0) > dayIndex) : true;
-    const maghribDone = isMaghribReq ? ((completed?.maghrib || 0) > dayIndex) : true;
-    const isyaDone = isIsyaReq ? ((completed?.isya || 0) > dayIndex) : true;
-
     const requiredCount = (isSubuhReq ? 1 : 0) + (isDzuhurReq ? 1 : 0) + (isAsharReq ? 1 : 0) + (isMaghribReq ? 1 : 0) + (isIsyaReq ? 1 : 0);
-    
     if (requiredCount === 0) return { type: 'normal' };
 
     const paidCount = (isSubuhReq && ((completed?.subuh || 0) > dayIndex) ? 1 : 0) +
@@ -146,13 +199,7 @@ export default function KalenderPage() {
     if (paidCount === requiredCount) {
       return { type: 'green', prayersPaid: paidCount, totalRequired: requiredCount, label: `Lunas (${paidCount}/${requiredCount} Sholat)`, prayerDetails };
     } else if (paidCount > 0) {
-      return {
-        type: 'partial',
-        prayersPaid: paidCount,
-        totalRequired: requiredCount,
-        label: `Progress (${paidCount}/${requiredCount} Sholat)`,
-        prayerDetails
-      };
+      return { type: 'partial', prayersPaid: paidCount, totalRequired: requiredCount, label: `Progress (${paidCount}/${requiredCount} Sholat)`, prayerDetails };
     } else {
       return { type: 'red', prayersPaid: 0, totalRequired: requiredCount, label: `Utang (0/${requiredCount} Sholat)`, prayerDetails };
     }
@@ -172,8 +219,8 @@ export default function KalenderPage() {
   };
 
   const jumpToStartDate = () => {
-    if (startDate) {
-      const d = new Date(startDate);
+    if (activeStartDate) {
+      const d = new Date(activeStartDate);
       if (!isNaN(d.getTime())) {
         setCurrentDate(new Date(d.getFullYear(), d.getMonth(), 1));
       }
@@ -187,7 +234,6 @@ export default function KalenderPage() {
   const firstDayOfMonth = new Date(year, month, 1);
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  // Get day of week for 1st day (0 = Sunday, 1 = Monday ... 6 = Saturday)
   let startDayOfWeek = firstDayOfMonth.getDay() - 1;
   if (startDayOfWeek < 0) startDayOfWeek = 6;
 
@@ -224,33 +270,13 @@ export default function KalenderPage() {
   let totalPartialDays = 0;
   let totalRedDays = 0;
 
-  if (startDate && endDate) {
-    const startMs = new Date(startDate).getTime();
-    const endMs = new Date(endDate).getTime();
-    if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
-      const numDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
-      for (let i = 0; i < numDays; i++) {
-        const isSubuhReq = selectedPrayers ? selectedPrayers.subuh !== false : true;
-        const isDzuhurReq = selectedPrayers ? selectedPrayers.dzuhur !== false : true;
-        const isAsharReq = selectedPrayers ? selectedPrayers.ashar !== false : true;
-        const isMaghribReq = selectedPrayers ? selectedPrayers.maghrib !== false : true;
-        const isIsyaReq = selectedPrayers ? selectedPrayers.isya !== false : true;
-
-        const reqCount = (isSubuhReq ? 1 : 0) + (isDzuhurReq ? 1 : 0) + (isAsharReq ? 1 : 0) + (isMaghribReq ? 1 : 0) + (isIsyaReq ? 1 : 0);
-        if (reqCount === 0) continue;
-
-        const paid = (isSubuhReq && ((completed?.subuh || 0) > i) ? 1 : 0) +
-                     (isDzuhurReq && ((completed?.dzuhur || 0) > i) ? 1 : 0) +
-                     (isAsharReq && ((completed?.ashar || 0) > i) ? 1 : 0) +
-                     (isMaghribReq && ((completed?.maghrib || 0) > i) ? 1 : 0) +
-                     (isIsyaReq && ((completed?.isya || 0) > i) ? 1 : 0);
-
-        if (paid === reqCount) totalGreenDays++;
-        else if (paid > 0) totalPartialDays++;
-        else totalRedDays++;
-      }
-    }
-  }
+  const targetDatesList = hasPeriods ? sortedDates : [];
+  targetDatesList.forEach((dStr) => {
+    const st = getDayStatus(dStr);
+    if (st.type === 'green') totalGreenDays++;
+    else if (st.type === 'partial') totalPartialDays++;
+    else if (st.type === 'red') totalRedDays++;
+  });
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -266,7 +292,7 @@ export default function KalenderPage() {
             <ArrowLeft className="w-4 h-4" />
             <span>Kembali ke Dashboard</span>
           </Link>
-          {startDate && (
+          {activeStartDate && (
             <button
               onClick={jumpToStartDate}
               className="text-xs font-bold text-emerald-800 hover:text-emerald-950 bg-emerald-100 px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-colors"

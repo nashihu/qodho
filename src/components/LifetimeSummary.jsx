@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info, Ban } from 'lucide-react';
+import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info, Ban, Layers } from 'lucide-react';
 import Link from 'next/link';
+import { computePeriodsRequirement } from '../utils/qodhoCalculator';
 
 const PRAYERS = [
   { id: 'subuh', name: 'Subuh', color: 'from-blue-600 to-indigo-700', badge: 'bg-blue-100 text-blue-800' },
@@ -13,6 +14,7 @@ const PRAYERS = [
 ];
 
 export default function LifetimeSummary() {
+  const [periods, setPeriods] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [customTotalDays, setCustomTotalDays] = useState(null);
@@ -39,6 +41,7 @@ export default function LifetimeSummary() {
       const saved = localStorage.getItem('qodho_lifetime_data');
       if (saved) {
         const parsed = JSON.parse(saved);
+        if (parsed.periods && Array.isArray(parsed.periods)) setPeriods(parsed.periods);
         if (parsed.startDate) setStartDate(parsed.startDate);
         if (parsed.endDate) setEndDate(parsed.endDate);
         if (typeof parsed.totalDays === 'number') setCustomTotalDays(parsed.totalDays);
@@ -71,11 +74,19 @@ export default function LifetimeSummary() {
     };
   }, []);
 
-  // Save to localStorage ONLY AFTER initial load
+  // Save to localStorage ONLY AFTER initial load (preserve completed!)
   useEffect(() => {
     if (!isLoaded) return;
     try {
+      const saved = localStorage.getItem('qodho_lifetime_data');
+      let existingPeriods = periods;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.periods) existingPeriods = parsed.periods;
+      }
+
       const payload = {
+        periods: existingPeriods,
         startDate,
         endDate,
         totalDays: customTotalDays,
@@ -88,17 +99,26 @@ export default function LifetimeSummary() {
     } catch (e) {
       console.error('Failed to save lifetime data', e);
     }
-  }, [startDate, endDate, customTotalDays, years, months, selectedPrayers, completed, isLoaded]);
+  }, [periods, startDate, endDate, customTotalDays, years, months, selectedPrayers, completed, isLoaded]);
 
-  const computedDays = Math.max(0, Math.floor((years || 0) * 365 + (months || 0) * 30.41));
-  const totalDays = customTotalDays !== null && customTotalDays !== undefined ? customTotalDays : computedDays;
+  // Calculate targets based on periods or legacy state
+  const hasPeriods = periods && periods.length > 0;
+  const merged = hasPeriods ? computePeriodsRequirement(periods) : null;
+
+  const displayStartDate = hasPeriods ? merged.minStartDate : startDate;
+  const displayEndDate = hasPeriods ? merged.maxEndDate : endDate;
+  const totalDays = hasPeriods ? merged.totalDays : (customTotalDays !== null && customTotalDays !== undefined ? customTotalDays : Math.max(0, Math.floor((years || 0) * 365 + (months || 0) * 30.41)));
 
   const getInitialForPrayer = (prayerId) => {
+    if (hasPeriods && merged) {
+      return merged.totalPrayers[prayerId] || 0;
+    }
     return (selectedPrayers && selectedPrayers[prayerId] === false) ? 0 : totalDays;
   };
 
-  const initialTotalPrayers = PRAYERS.reduce((acc, p) => acc + getInitialForPrayer(p.id), 0);
-  const selectedPrayerCount = Object.values(selectedPrayers || {}).filter(Boolean).length;
+  const initialTotalPrayers = hasPeriods && merged 
+    ? merged.overallTotalPrayers 
+    : PRAYERS.reduce((acc, p) => acc + getInitialForPrayer(p.id), 0);
 
   const totalCompleted = Object.values(completed).reduce((a, b) => a + b, 0);
   const totalRemaining = Math.max(0, initialTotalPrayers - totalCompleted);
@@ -114,7 +134,7 @@ export default function LifetimeSummary() {
   };
 
   const handleReset = () => {
-    if (confirm('Apakah Anda yakin ingin meriset hitungan sholat qodho lifetime?')) {
+    if (confirm('Apakah Anda yakin ingin meriset hitungan sholat qodho lifetime? (Periode waktu tidak akan terhapus)')) {
       setCompleted({ subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 });
     }
   };
@@ -142,7 +162,7 @@ export default function LifetimeSummary() {
             <div>
               <h3 className="text-sm font-bold text-amber-950">Belum Ada Durasi Qodho Yang Diatur</h3>
               <p className="text-xs text-amber-800 mt-0.5">
-                Hitungan default sholat fardhu masih 0. Atur rentang tanggal atau estimasi durasi waktu tidak sholat terlebih dahulu.
+                Hitungan default sholat fardhu masih 0. Atur periode tanggal atau waktu tidak sholat di Kalkulator Durasi.
               </p>
             </div>
           </div>
@@ -164,19 +184,22 @@ export default function LifetimeSummary() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-base font-bold text-slate-800">Estimasi Durasi Qodho</h2>
-              {startDate && endDate ? (
+              {displayStartDate && displayEndDate ? (
                 <span className="text-xs bg-emerald-100 text-emerald-900 font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
                   <Calendar className="w-3 h-3 text-emerald-700" />
-                  {formatReadableDate(startDate)} &mdash; {formatReadableDate(endDate)} ({totalDays.toLocaleString('id-ID')} Hari)
+                  {formatReadableDate(displayStartDate)} &mdash; {formatReadableDate(displayEndDate)} ({totalDays.toLocaleString('id-ID')} Hari Unik)
                 </span>
               ) : (
                 <span className="text-xs bg-emerald-100 text-emerald-800 font-extrabold px-2.5 py-0.5 rounded-full">
                   {years} Tahun {months > 0 ? `${months} Bulan` : ''}
                 </span>
               )}
-              <span className="text-xs bg-slate-100 text-slate-700 font-bold px-2.5 py-0.5 rounded-full">
-                {selectedPrayerCount}/5 Waktu Sholat Terpilih
-              </span>
+              {hasPeriods && (
+                <span className="text-xs bg-emerald-800 text-white font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                  <Layers className="w-3 h-3" />
+                  {periods.length} Periode Overlap Digabung
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
               Total {totalDays.toLocaleString('id-ID')} hari ({initialTotalPrayers.toLocaleString('id-ID')} total utang sholat terpilih)
@@ -213,7 +236,7 @@ export default function LifetimeSummary() {
           <div className="space-y-1">
             <span className="text-xs font-semibold text-emerald-200 uppercase tracking-wider">Total Hutang Sholat</span>
             <div className="text-3xl font-extrabold">{initialTotalPrayers.toLocaleString('id-ID')} <span className="text-sm font-normal text-emerald-200">kali</span></div>
-            <p className="text-xs text-emerald-300">Total {selectedPrayerCount} waktu sholat terpilih</p>
+            <p className="text-xs text-emerald-300">Total seluruh periode waktu sholat terpilih</p>
           </div>
 
           <div className="space-y-1">
@@ -259,8 +282,8 @@ export default function LifetimeSummary() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {PRAYERS.map((prayer) => {
-            const isSelected = selectedPrayers ? selectedPrayers[prayer.id] !== false : true;
-            const initialForPrayer = isSelected ? totalDays : 0;
+            const initialForPrayer = getInitialForPrayer(prayer.id);
+            const isSelected = initialForPrayer > 0;
             const done = completed[prayer.id] || 0;
             const remaining = Math.max(0, initialForPrayer - done);
             const prayerPercent = initialForPrayer > 0 
@@ -280,7 +303,7 @@ export default function LifetimeSummary() {
                       {prayer.name}
                     </span>
                     <span className="text-xs text-slate-500 font-medium">
-                      {isSelected ? `${done} / ${initialForPrayer} Selesai` : 'Tidak Ditinggalkan'}
+                      {isSelected ? `${done} / ${initialForPrayer} Selesai` : '0 Utang'}
                     </span>
                   </div>
 
@@ -295,7 +318,7 @@ export default function LifetimeSummary() {
                   ) : (
                     <div className="my-3 py-1 flex items-center gap-2 text-xs text-slate-500 font-semibold">
                       <Ban className="w-4 h-4 text-slate-400" />
-                      <span>Sholat ini tidak dicentang di Kalkulator</span>
+                      <span>Sholat ini tidak ada utang pada periode terpilih</span>
                     </div>
                   )}
 

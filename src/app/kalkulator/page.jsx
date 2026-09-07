@@ -2,9 +2,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calculator, ArrowLeft, Save, Info, RotateCcw, CheckCircle2, Calendar as CalendarIcon, Clock, Sparkles, CheckSquare, Square } from 'lucide-react';
+import { Calculator, ArrowLeft, Save, Info, RotateCcw, CheckCircle2, Calendar as CalendarIcon, Clock, Sparkles, CheckSquare, Square, Plus, Trash2, Layers } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
+import { computePeriodsRequirement } from '../../utils/qodhoCalculator';
 
 const PRAYER_OPTIONS = [
   { id: 'subuh', label: 'Subuh', color: 'text-blue-600 bg-blue-50 border-blue-200' },
@@ -32,8 +33,16 @@ export default function KalkulatorPage() {
     return formatDateToInput(d);
   };
 
+  // Helper to get date N months ago from today
+  const getPastDateByMonths = (monthsAgo) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - monthsAgo);
+    return formatDateToInput(d);
+  };
+
   const todayStr = formatDateToInput(new Date());
 
+  const [periods, setPeriods] = useState([]);
   const [startDate, setStartDate] = useState(getPastDate(1));
   const [endDate, setEndDate] = useState(todayStr);
   const [selectedPrayers, setSelectedPrayers] = useState({
@@ -51,14 +60,17 @@ export default function KalkulatorPage() {
       const saved = localStorage.getItem('qodho_lifetime_data');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.startDate) setStartDate(parsed.startDate);
-        if (parsed.endDate) setEndDate(parsed.endDate);
-        else if (typeof parsed.years === 'number') {
-          setStartDate(getPastDate(parsed.years || 1));
-          setEndDate(todayStr);
-        }
-        if (parsed.selectedPrayers) {
-          setSelectedPrayers(parsed.selectedPrayers);
+        if (parsed.periods && Array.isArray(parsed.periods) && parsed.periods.length > 0) {
+          setPeriods(parsed.periods);
+        } else if (parsed.startDate && parsed.endDate) {
+          // Convert legacy single range to initial period item
+          const legacyPeriod = {
+            id: 'legacy-1',
+            startDate: parsed.startDate,
+            endDate: parsed.endDate,
+            selectedPrayers: parsed.selectedPrayers || { subuh: true, dzuhur: true, ashar: true, maghrib: true, isya: true }
+          };
+          setPeriods([legacyPeriod]);
         }
       }
     } catch (e) {
@@ -66,23 +78,26 @@ export default function KalkulatorPage() {
     }
   }, []);
 
-  // Calculate day difference between startDate and endDate
-  const calculateDays = (startStr, endStr) => {
-    if (!startStr || !endStr) return 0;
-    const start = new Date(startStr);
-    const end = new Date(endStr);
-    const diffMs = end.getTime() - start.getTime();
-    if (isNaN(diffMs) || diffMs < 0) return 0;
-    return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+  // Compute active preview by merging existing periods + currently edited period form
+  const currentFormPeriod = {
+    id: 'current-form',
+    startDate,
+    endDate,
+    selectedPrayers
   };
 
-  const totalDays = calculateDays(startDate, endDate);
-  const selectedPrayerCount = Object.values(selectedPrayers).filter(Boolean).length;
-  const initialTotalPrayers = totalDays * selectedPrayerCount;
+  // Combined preview including current form entry if valid
+  const formDays = (() => {
+    if (!startDate || !endDate) return 0;
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diff = end.getTime() - start.getTime();
+    if (isNaN(diff) || diff < 0) return 0;
+    return Math.max(0, Math.round(diff / (1000 * 60 * 60 * 24))) + 1;
+  })();
 
-  // Approximate years and months for human readable display
-  const equivYears = Math.floor(totalDays / 365);
-  const equivMonths = Math.floor((totalDays % 365) / 30.41);
+  const allPeriodsPreview = formDays > 0 ? [...periods, currentFormPeriod] : periods;
+  const mergedRequirement = computePeriodsRequirement(allPeriodsPreview);
 
   // Toggle single prayer checkbox
   const togglePrayer = (id) => {
@@ -104,29 +119,73 @@ export default function KalkulatorPage() {
   };
 
   // Apply quick date range presets
-  const handleApplyPreset = (yearsAgo) => {
-    setStartDate(getPastDate(yearsAgo));
+  const handleApplyPreset = (preset) => {
+    if (preset.months) {
+      setStartDate(getPastDateByMonths(preset.months));
+    } else if (preset.years) {
+      setStartDate(getPastDate(preset.years));
+    }
     setEndDate(todayStr);
+  };
+
+  const handleAddCurrentPeriodOnly = () => {
+    if (formDays <= 0) return;
+    const newPeriod = {
+      id: Date.now().toString(),
+      startDate,
+      endDate,
+      selectedPrayers
+    };
+    setPeriods(prev => [...prev, newPeriod]);
+  };
+
+  const handleDeletePeriod = (id) => {
+    setPeriods(prev => prev.filter(p => p.id !== id));
   };
 
   const handleSaveAndReturn = (e) => {
     e.preventDefault();
     try {
+      let finalPeriods = [...periods];
+
+      // If user filled in the form, append it to periods
+      if (formDays > 0) {
+        const newPeriod = {
+          id: Date.now().toString(),
+          startDate,
+          endDate,
+          selectedPrayers
+        };
+        finalPeriods.push(newPeriod);
+      }
+
+      if (finalPeriods.length === 0) {
+        alert('Silakan tentukan minimal 1 periode sholat terlewat.');
+        return;
+      }
+
       const existing = localStorage.getItem('qodho_lifetime_data');
       let completed = { subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 };
       if (existing) {
         const parsed = JSON.parse(existing);
-        if (parsed.completed) completed = parsed.completed;
+        if (parsed.completed) completed = parsed.completed; // PRESERVE COUNTER!
       }
 
+      const merged = computePeriodsRequirement(finalPeriods);
+
       const newData = {
-        startDate,
-        endDate,
-        totalDays,
-        years: equivYears,
-        months: equivMonths,
-        selectedPrayers,
-        completed
+        periods: finalPeriods,
+        startDate: merged.minStartDate,
+        endDate: merged.maxEndDate,
+        totalDays: merged.totalDays,
+        selectedPrayers: {
+          subuh: merged.totalPrayers.subuh > 0,
+          dzuhur: merged.totalPrayers.dzuhur > 0,
+          ashar: merged.totalPrayers.ashar > 0,
+          maghrib: merged.totalPrayers.maghrib > 0,
+          isya: merged.totalPrayers.isya > 0,
+        },
+        completed // PRESERVED EXACTLY!
       };
 
       localStorage.setItem('qodho_lifetime_data', JSON.stringify(newData));
@@ -146,8 +205,9 @@ export default function KalkulatorPage() {
     }
   };
 
-  const handleReset = () => {
-    if (confirm('Reset input durasi dan pilihan sholat ke default?')) {
+  const handleResetAll = () => {
+    if (confirm('Reset semua periode yang telah dikonfigurasi? (Progress sholat yang telah di-qodho tidak akan terhapus)')) {
+      setPeriods([]);
       setStartDate(getPastDate(1));
       setEndDate(todayStr);
       setSelectedPrayers({
@@ -166,7 +226,7 @@ export default function KalkulatorPage() {
     try {
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return '-';
-      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
     } catch {
       return dateStr;
     }
@@ -195,29 +255,73 @@ export default function KalkulatorPage() {
               <Calculator className="w-7 h-7 text-emerald-300" />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold tracking-wide">Kalkulator Durasi Qodho</h1>
-              <p className="text-xs text-emerald-300">Pilih rentang tanggal & waktu sholat fardhu spesifik yang terlewat (*Subuh, Dzuhur, Ashar, Maghrib, Isya*)</p>
+              <h1 className="text-2xl font-extrabold tracking-wide">Kalkulator Durasi Qodho Multi-Periode</h1>
+              <p className="text-xs text-emerald-300">Tambah beberapa periode waktu tidak sholat (misal: Agustus Subuh saja, September Isya saja). Overlap akan digabung otomatis.</p>
             </div>
           </div>
         </div>
 
-        {/* Calculator Form */}
+        {/* Saved Periods List */}
+        {periods.length > 0 && (
+          <div className="bg-white rounded-3xl p-6 shadow-sm border border-emerald-100 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Layers className="w-4 h-4 text-emerald-600" />
+                <span>Daftar Periode Yang Telah Ditambahkan ({periods.length})</span>
+              </h3>
+              <button
+                onClick={handleResetAll}
+                className="text-xs text-rose-600 hover:text-rose-800 px-2 py-1 rounded transition-colors font-semibold"
+              >
+                Reset Semua
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {periods.map((p, idx) => {
+                const activeNames = PRAYER_OPTIONS.filter(opt => p.selectedPrayers?.[opt.id]).map(opt => opt.label);
+                return (
+                  <div
+                    key={p.id || idx}
+                    className="p-4 rounded-2xl border border-slate-200 bg-slate-50/80 flex items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1">
+                      <div className="text-xs font-bold text-slate-900 flex items-center gap-2">
+                        <span>Periode {idx + 1}: {formatReadableDate(p.startDate)} &mdash; {formatReadableDate(p.endDate)}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {activeNames.map(name => (
+                          <span key={name} className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2 py-0.5 rounded-full">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleDeletePeriod(p.id)}
+                      className="text-slate-400 hover:text-rose-600 p-2 hover:bg-rose-50 rounded-xl transition-colors shrink-0"
+                      title="Hapus Periode Ini"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Calculator Form to Add New Period */}
         <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-emerald-100 space-y-6">
           <div className="flex items-center justify-between border-b border-slate-100 pb-4">
             <div>
-              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-emerald-600" />
-                <span>Rentang Tanggal & Pilihan Waktu Sholat</span>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                <Plus className="w-5 h-5 text-emerald-600" />
+                <span>Form Tambah Periode Sholat Terlewat Baru</span>
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">Atur tanggal dan pilih hanya sholat yang benar-benar ditinggalkan</p>
+              <p className="text-xs text-slate-500 mt-0.5">Tentukan rentang tanggal dan sholat fardhu yang terlewat untuk periode ini</p>
             </div>
-            <button
-              onClick={handleReset}
-              className="text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-200 transition-colors flex items-center gap-1 font-medium shrink-0"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset</span>
-            </button>
           </div>
 
           <form onSubmit={handleSaveAndReturn} className="space-y-6">
@@ -228,16 +332,18 @@ export default function KalkulatorPage() {
               </label>
               <div className="flex flex-wrap gap-2">
                 {[
+                  { label: '1 Bulan Terakhir', months: 1 },
+                  { label: '3 Bulan Terakhir', months: 3 },
                   { label: '1 Tahun Terakhir', years: 1 },
                   { label: '2 Tahun Terakhir', years: 2 },
                   { label: '3 Tahun Terakhir', years: 3 },
                   { label: '5 Tahun Terakhir', years: 5 },
                   { label: '10 Tahun Terakhir', years: 10 },
-                ].map((preset) => (
+                ].map((preset, pIdx) => (
                   <button
-                    key={preset.years}
+                    key={pIdx}
                     type="button"
-                    onClick={() => handleApplyPreset(preset.years)}
+                    onClick={() => handleApplyPreset(preset)}
                     className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-600 hover:text-white transition-all shadow-sm active:scale-95"
                   >
                     {preset.label}
@@ -251,7 +357,7 @@ export default function KalkulatorPage() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
                   <CalendarIcon className="w-4 h-4 text-emerald-600" />
-                  <span>Tanggal Mulai Tidak Sholat (Start Date)</span>
+                  <span>Tanggal Mulai (Start Date)</span>
                 </label>
                 <input
                   type="date"
@@ -266,7 +372,7 @@ export default function KalkulatorPage() {
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1.5 flex items-center gap-1.5">
                   <CalendarIcon className="w-4 h-4 text-emerald-600" />
-                  <span>Tanggal Akhir / Hari Ini (End Date)</span>
+                  <span>Tanggal Akhir (End Date)</span>
                 </label>
                 <input
                   type="date"
@@ -284,7 +390,7 @@ export default function KalkulatorPage() {
               <div className="flex items-center justify-between">
                 <label className="block text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   <CheckSquare className="w-4 h-4 text-emerald-600" />
-                  <span>Pilih Waktu Sholat Yang Ditinggalkan:</span>
+                  <span>Sholat Yang Ditinggalkan Pada Periode Ini:</span>
                 </label>
                 <div className="flex items-center gap-2 text-xs font-semibold">
                   <button
@@ -329,54 +435,62 @@ export default function KalkulatorPage() {
                   );
                 })}
               </div>
-              <p className="text-[11px] text-slate-400">
-                *Hanya waktu sholat yang dicentang yang akan dihitung dan ditagihkan sebagai utang qodho.
-              </p>
             </div>
 
-            {/* Calculation Result Preview Box */}
+            {/* Combined Calculation Preview Box */}
             <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200/90 space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-emerald-200/80 pb-3">
                 <div className="flex items-center gap-2 text-emerald-950">
                   <Info className="w-5 h-5 text-emerald-700 shrink-0" />
-                  <span className="text-sm font-bold">Hasil Perhitungan Estimasi:</span>
+                  <span className="text-sm font-bold">Hasil Penggabungan Overlap (Total Akumulasi):</span>
                 </div>
                 <div className="text-xs font-semibold text-emerald-900 bg-white px-3 py-1 rounded-full border border-emerald-200">
-                  {formatReadableDate(startDate)} &mdash; {formatReadableDate(endDate)} ({selectedPrayerCount}/5 Waktu Sholat)
+                  {mergedRequirement.totalDays.toLocaleString('id-ID')} Hari Unik (Overlap Digabung)
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-sm">
-                  <div className="text-xs text-slate-500 font-medium">Total Hari (Durasi)</div>
-                  <div className="text-xl font-extrabold text-emerald-900">{totalDays.toLocaleString('id-ID')} <span className="text-xs font-normal">hari</span></div>
+                  <div className="text-xs text-slate-500 font-medium">Total Hari Unik</div>
+                  <div className="text-xl font-extrabold text-emerald-900">{mergedRequirement.totalDays.toLocaleString('id-ID')} <span className="text-xs font-normal">hari</span></div>
                   <div className="text-[11px] text-slate-400 font-medium mt-0.5">
-                    (~{equivYears} thn {equivMonths > 0 ? `${equivMonths} bln` : ''})
+                    {formatReadableDate(mergedRequirement.minStartDate)} &mdash; {formatReadableDate(mergedRequirement.maxEndDate)}
                   </div>
                 </div>
 
                 <div className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-sm">
-                  <div className="text-xs text-slate-500 font-medium">Per Waktu Sholat Terpilih</div>
-                  <div className="text-xl font-extrabold text-emerald-900">{totalDays.toLocaleString('id-ID')} <span className="text-xs font-normal">kali</span></div>
-                  <div className="text-[11px] text-slate-400 font-medium mt-0.5">
-                    {PRAYER_OPTIONS.filter(p => selectedPrayers[p.id]).map(p => p.label).join(', ') || 'Belum ada sholat dipilih'}
+                  <div className="text-xs text-slate-500 font-medium">Rincian Per Sholat</div>
+                  <div className="text-xs font-bold text-slate-700 space-y-0.5 mt-1">
+                    <div>Subuh: {mergedRequirement.totalPrayers.subuh} kali</div>
+                    <div>Dzuhur: {mergedRequirement.totalPrayers.dzuhur} kali</div>
+                    <div>Ashar: {mergedRequirement.totalPrayers.ashar} kali</div>
                   </div>
                 </div>
 
                 <div className="bg-white p-3.5 rounded-xl border border-emerald-100 shadow-sm">
-                  <div className="text-xs text-slate-500 font-medium">Total Utang Qodho</div>
-                  <div className="text-xl font-extrabold text-emerald-950">{initialTotalPrayers.toLocaleString('id-ID')} <span className="text-xs font-normal">kali</span></div>
-                  <div className="text-[11px] text-slate-400 font-medium mt-0.5">{totalDays} hari &times; {selectedPrayerCount} waktu sholat</div>
+                  <div className="text-xs text-slate-500 font-medium">Total Akumulasi Utang Qodho</div>
+                  <div className="text-xl font-extrabold text-emerald-950">{mergedRequirement.overallTotalPrayers.toLocaleString('id-ID')} <span className="text-xs font-normal">kali</span></div>
+                  <div className="text-[11px] text-slate-400 font-medium mt-0.5">Maghrib: {mergedRequirement.totalPrayers.maghrib}x | Isya: {mergedRequirement.totalPrayers.isya}x</div>
                 </div>
               </div>
             </div>
 
-            {/* Submit Button */}
-            <div className="pt-2">
+            {/* Action Buttons */}
+            <div className="pt-2 flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={handleAddCurrentPeriodOnly}
+                disabled={formDays <= 0}
+                className="flex-1 font-bold py-3 px-5 rounded-2xl border border-emerald-600 text-emerald-700 hover:bg-emerald-50 transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-40"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Tambah Periode Lagi</span>
+              </button>
+
               <button
                 type="submit"
-                disabled={totalDays <= 0 || selectedPrayerCount === 0}
-                className={`w-full font-bold py-3.5 px-6 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-base active:scale-[0.99] disabled:opacity-50 ${
+                disabled={allPeriodsPreview.length === 0}
+                className={`flex-1 font-bold py-3.5 px-6 rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 text-base active:scale-[0.99] disabled:opacity-50 ${
                   savedSuccess
                     ? 'bg-emerald-800 text-white'
                     : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
@@ -390,7 +504,7 @@ export default function KalkulatorPage() {
                 ) : (
                   <>
                     <Save className="w-5 h-5" />
-                    <span>Simpan & Kembali ke Home</span>
+                    <span>Tambah & Kembali ke Home</span>
                   </>
                 )}
               </button>
