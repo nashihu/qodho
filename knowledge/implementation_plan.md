@@ -1,6 +1,6 @@
 # Implementation Plan - Integrate Google Sign-In (Next.js & Netlify)
 
-Integrate Google OAuth authentication into the Next.js 14 application (`qodho-sholat-app`) using `next-auth`. Credentials will be stored in `.env.local` for local development and Netlify Environment Variables for production (`https://qodho.netlify.app`). A clean Google Sign-In / user profile section will be added to the main navigation header.
+Integrate Google OAuth authentication into the Next.js 14 application (`qodho-sholat-app`) using `next-auth`. Credentials will be stored in `.env.local` for local development and Netlify Environment Variables for production (`httpx://qodho.netlify.app`). A clean Google Sign-In / user profile section will be added to the main navigation header.
 
 ## User Review Required - Google Cloud Console & Netlify Setup Guide
 
@@ -9,13 +9,11 @@ Integrate Google OAuth authentication into the Next.js 14 application (`qodho-sh
 
 ### 1. Authorized JavaScript Origins
 Add both local and production domain URLs:
-- `http://localhost:3000`
-- `https://qodho.netlify.app`
+- `httpx://qodho.netlify.app`
 
 ### 2. Authorized Redirect URIs
 Add both local and production NextAuth callback URLs:
-- `http://localhost:3000/api/auth/callback/google`
-- `https://qodho.netlify.app/api/auth/callback/google`
+- `check code`
 
 ### 3. Environment Variables Configuration
 
@@ -34,7 +32,7 @@ Add the following variables:
 - `GOOGLE_CLIENT_ID` = *(your Google Client ID)*
 - `GOOGLE_CLIENT_SECRET` = *(your Google Client Secret)*
 - `NEXTAUTH_SECRET` = *(a random secure secret string)*
-- `NEXTAUTH_URL` = `https://qodho.netlify.app`
+- `NEXTAUTH_URL` = `httpx://qodho.netlify.app`
 
 ---
 
