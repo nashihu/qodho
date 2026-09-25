@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info, Ban, Layers } from 'lucide-react';
+import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info, Ban, Layers, FileJson } from 'lucide-react';
 import Link from 'next/link';
 import { computePeriodsRequirement } from '../utils/qodhoCalculator';
+import BackupRestoreModal from './BackupRestoreModal';
 
 const PRAYERS = [
   { id: 'subuh', name: 'Subuh', color: 'from-blue-600 to-indigo-700', badge: 'bg-blue-100 text-blue-800' },
@@ -35,6 +35,7 @@ export default function LifetimeSummary() {
     isya: 0,
   });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isBackupOpen, setIsBackupOpen] = useState(false);
 
   const loadFromLocalStorage = () => {
     try {
@@ -216,6 +217,14 @@ export default function LifetimeSummary() {
             <span>Kalkulator Durasi</span>
           </Link>
           <button
+            onClick={() => setIsBackupOpen(true)}
+            className="text-xs text-emerald-800 hover:bg-emerald-50 px-3.5 py-2.5 rounded-xl border border-emerald-200 transition-colors flex items-center gap-1.5 font-bold bg-emerald-50/50"
+            title="Backup & Restore Data JSON"
+          >
+            <FileJson className="w-3.5 h-3.5 text-emerald-700" />
+            <span>Backup Data</span>
+          </button>
+          <button
             onClick={handleReset}
             className="text-xs text-rose-700 hover:text-rose-900 hover:bg-rose-50 px-3 py-2.5 rounded-xl border border-rose-200 transition-colors flex items-center gap-1 font-medium"
             title="Reset Progress Qodho"
@@ -367,6 +376,8 @@ export default function LifetimeSummary() {
           })}
         </div>
       </div>
+
+      <BackupRestoreModal isOpen={isBackupOpen} onClose={() => setIsBackupOpen(false)} />
     </div>
   );
 }

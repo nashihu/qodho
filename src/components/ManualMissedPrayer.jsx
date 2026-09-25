@@ -15,8 +15,7 @@ export default function ManualMissedPrayer() {
   const [note, setNote] = useState('');
   const [filter, setFilter] = useState('pending'); // 'all', 'pending', 'completed'
 
-  // Load from localStorage
-  useEffect(() => {
+  const loadFromLocalStorage = () => {
     try {
       const saved = localStorage.getItem('qodho_manual_data');
       if (saved) {
@@ -53,6 +52,23 @@ export default function ManualMissedPrayer() {
     } catch (e) {
       console.error('Failed to load manual data', e);
     }
+  };
+
+  // Load from localStorage on mount & listen to updates
+  useEffect(() => {
+    loadFromLocalStorage();
+
+    const handleStorageUpdate = () => {
+      loadFromLocalStorage();
+    };
+
+    window.addEventListener('storage', handleStorageUpdate);
+    window.addEventListener('qodho_updated', handleStorageUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageUpdate);
+      window.removeEventListener('qodho_updated', handleStorageUpdate);
+    };
   }, []);
 
   // Save to localStorage
