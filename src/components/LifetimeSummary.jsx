@@ -1,5 +1,6 @@
 "use client";
 
+import React, { useState, useEffect } from 'react';
 import { Calculator, CheckCircle2, RotateCcw, Plus, Minus, Edit3, Flame, Sparkles, Calendar, Info, Ban, Layers, FileJson } from 'lucide-react';
 import Link from 'next/link';
 import { computePeriodsRequirement } from '../utils/qodhoCalculator';
