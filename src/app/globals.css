@@ -18,3 +18,14 @@ body {
     rgb(var(--background-start-rgb));
   min-height: 100vh;
 }
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
