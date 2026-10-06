@@ -1,7 +1,12 @@
 import { neon } from '@neondatabase/serverless';
 
-/**
- * Neon PostgreSQL Raw SQL query helper using @neondatabase/serverless HTTP driver.
- * Uses process.env.DATABASE_URL from environment variables.
- */
-export const sql = neon(process.env.DATABASE_URL || '');
+let cachedSql = null;
+
+function getSql() {
+  if (!cachedSql) {
+    cachedSql = neon(process.env.DATABASE_URL || '');
+  }
+  return cachedSql;
+}
+
+export const sql = getSql();

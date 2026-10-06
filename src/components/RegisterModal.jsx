@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState } from 'react';
-import { KeyRound, Mail, CheckCircle2, AlertCircle, X, Loader2, Sparkles, User } from 'lucide-react';
+import { KeyRound, Mail, CheckCircle2, AlertCircle, X, Loader2, Sparkles, User, ShoppingCart, ExternalLink } from 'lucide-react';
 import { useSession } from 'next-auth/react';
+import { encryptText } from '../utils/crypto';
 
-export default function RegisterModal({ isOpen, onClose }) {
+export default function RegisterModal({ isOpen, onClose, onSuccess }) {
   const { data: session } = useSession();
   const [license, setLicense] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -59,13 +60,25 @@ export default function RegisterModal({ isOpen, onClose }) {
         return;
       }
 
-      setStatusMessage({
-        type: 'success',
-        text: data.message || 'Registrasi Berhasil! Lisensi Anda telah aktif.'
-      });
+      // Encrypt user email and save into localStorage key 'user'
+      try {
+        const serverPubKey = process.env.NEXT_PUBLIC_SERVER_PUBLIC_KEY || 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJDOxpPvSiQClTvWDT1OujRiFa370WltNtTHHBiNHBNioXHLSdAQNiM2+pmua4F1ZUdpjSBEdvG6bp+VCUbHUIg==';
+        const payloadStr = JSON.stringify({ email: userEmail, isRegistered: true });
+        const { encryptedData, clientPublicKey } = encryptText(payloadStr, serverPubKey);
+        localStorage.setItem('user', JSON.stringify({ data: encryptedData, clientPublicKey }));
+      } catch (encErr) {
+        console.error('Failed to save encrypted user cache:', encErr);
+      }
 
       // Clear license field on success
       setLicense('');
+
+      // Immediately close RegisterModal and trigger Thank You modal
+      if (typeof onSuccess === 'function') {
+        onSuccess();
+      } else {
+        onClose();
+      }
     } catch (err) {
       console.error('Register API error:', err);
       setStatusMessage({
@@ -124,6 +137,28 @@ export default function RegisterModal({ isOpen, onClose }) {
           <span className="text-[10px] font-bold bg-emerald-200 text-emerald-900 px-2 py-1 rounded-full shrink-0 border border-emerald-300">
             Google Connected
           </span>
+        </div>
+
+        {/* Purchase License Link Card */}
+        <div className="mt-4 p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-2xl flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="bg-amber-500 text-white p-2.5 rounded-xl shadow-xs shrink-0">
+              <ShoppingCart className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-slate-800">Belum Punya Lisensi?</div>
+              <div className="text-[11px] text-slate-600 truncate">Beli kode lisensi resmi di Mayar</div>
+            </div>
+          </div>
+          <a
+            href="https://qodho.myr.id/app/qodho-app"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-xs border border-amber-700 transition-all shrink-0 active:scale-95"
+          >
+            <span>Beli Lisensi</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
         </div>
 
         {/* Status Message Alert */}

@@ -7,6 +7,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import BackupRestoreModal from './BackupRestoreModal';
 import RegisterModal from './RegisterModal';
+import ThankYouModal from './ThankYouModal';
+
+import { encryptText } from '../utils/crypto';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const pathname = usePathname();
@@ -14,6 +17,9 @@ export default function Navbar({ activeTab, setActiveTab }) {
   const { data: session, status } = useSession();
   const [isBackupOpen, setIsBackupOpen] = React.useState(false);
   const [isRegisterOpen, setIsRegisterOpen] = React.useState(false);
+  const [isThankYouOpen, setIsThankYouOpen] = React.useState(false);
+  const [checkedEmails, setCheckedEmails] = React.useState({});
+  const [activeUserEmail, setActiveUserEmail] = React.useState('');
 
   const tabs = [
     { id: 'lifetime', label: 'Ringkasan Lifetime', icon: Calculator },
@@ -31,47 +37,111 @@ export default function Navbar({ activeTab, setActiveTab }) {
     }
   };
 
-  const [checkedEmails, setCheckedEmails] = React.useState({});
+  // Helper to encrypt and store user state in localStorage key 'user'
+  const saveUserCache = (emailStr, isRegisteredBool) => {
+    try {
+      const serverPubKey = process.env.NEXT_PUBLIC_SERVER_PUBLIC_KEY || 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJDOxpPvSiQClTvWDT1OujRiFa370WltNtTHHBiNHBNioXHLSdAQNiM2+pmua4F1ZUdpjSBEdvG6bp+VCUbHUIg==';
+      const payloadStr = JSON.stringify({ email: emailStr, isRegistered: isRegisteredBool });
+      const { encryptedData, clientPublicKey } = encryptText(payloadStr, serverPubKey);
+      localStorage.setItem('user', JSON.stringify({ data: encryptedData, clientPublicKey }));
+    } catch (err) {
+      console.error('Failed to save encrypted user cache:', err);
+    }
+  };
 
   // Check user registration status whenever Google session is active
   React.useEffect(() => {
-    const userEmail = session?.user?.email;
-    if (!userEmail || checkedEmails[userEmail]) return;
+    const rawGoogleEmail = session?.user?.email;
+    if (!rawGoogleEmail || checkedEmails[rawGoogleEmail]) return;
 
-    const checkUserRegistration = async () => {
+    const runUserVerificationFlow = async () => {
+      // 1. Check if localStorage key 'user' exists
+      const cachedUserData = localStorage.getItem('user');
+
+      if (cachedUserData) {
+        try {
+          const parsed = JSON.parse(cachedUserData);
+          if (parsed?.data && parsed?.clientPublicKey) {
+            // Call POST /api/decrypt (pure in-memory crypto, zero PSQL hits)
+            const decryptRes = await fetch('/api/decrypt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                data: parsed.data,
+                clientPublicKey: parsed.clientPublicKey,
+              }),
+            });
+
+            const decryptData = await decryptRes.json();
+            const decryptedString = decryptData?.decrypted;
+
+            if (decryptRes.ok && decryptedString && decryptedString.trim().length > 0) {
+              let cachePayload = null;
+              try {
+                cachePayload = JSON.parse(decryptedString);
+              } catch {
+                cachePayload = { email: decryptedString.trim(), isRegistered: true };
+              }
+
+              if (cachePayload?.email && typeof cachePayload?.isRegistered === 'boolean') {
+                // CACHE HIT!
+                setActiveUserEmail(cachePayload.email);
+                setCheckedEmails((prev) => ({ ...prev, [rawGoogleEmail]: true }));
+
+                if (cachePayload.isRegistered === false) {
+                  // User is not registered yet -> Open RegisterModal
+                  setIsRegisterOpen(true);
+                }
+                // Do NOT hit /api/check-user-exists!
+                return;
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Decryption cache check failed, clearing invalid cache key:', err);
+        }
+
+        // If decryption failed or payload is invalid, delete key 'user'
+        localStorage.removeItem('user');
+      }
+
+      // 2. Cache MISS or decryption error: hit POST /api/check-user-exists
       try {
-        const res = await fetch('/api/check-user-exists', {
+        const checkRes = await fetch('/api/check-user-exists', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: userEmail }),
+          body: JSON.stringify({ email: rawGoogleEmail }),
         });
 
-        const data = await res.json();
+        const checkData = await checkRes.json();
+        setCheckedEmails((prev) => ({ ...prev, [rawGoogleEmail]: true }));
 
-        // Mark email as checked to prevent loop
-        setCheckedEmails((prev) => ({ ...prev, [userEmail]: true }));
-
-        if (!res.ok || data.error) {
-          // If API returns an error, show popup error
+        if (!checkRes.ok || checkData.error) {
           alert('Terjadi kesalahan, kami sedang memperbaikinya');
           return;
         }
 
-        if (data.exists === false) {
-          // If API returns false, show RegisterModal.jsx
+        if (checkData.exists === false) {
+          // Scenario A: User is not registered in database -> Cache isRegistered: false
+          saveUserCache(rawGoogleEmail, false);
           setIsRegisterOpen(true);
+        } else if (checkData.exists === true) {
+          // Scenario B: User is registered in database -> Cache isRegistered: true
+          setActiveUserEmail(rawGoogleEmail);
+          saveUserCache(rawGoogleEmail, true);
         }
-        // If data.exists === true, let user stay signed in
       } catch (err) {
         console.error('Check user error:', err);
         alert('Terjadi kesalahan, kami sedang memperbaikinya');
       }
     };
 
-    checkUserRegistration();
+    runUserVerificationFlow();
   }, [session, checkedEmails]);
 
   const handleRegisterClick = () => {
+    // Delete key 'user' from localStorage when clicking "Daftar Lisensi"
+    localStorage.removeItem('user');
     if (!session) {
       signIn('google');
     } else {
@@ -218,7 +288,18 @@ export default function Navbar({ activeTab, setActiveTab }) {
       </div>
     </header>
     <BackupRestoreModal isOpen={isBackupOpen} onClose={() => setIsBackupOpen(false)} />
-    <RegisterModal isOpen={isRegisterOpen} onClose={() => setIsRegisterOpen(false)} />
+    <RegisterModal
+      isOpen={isRegisterOpen}
+      onClose={() => setIsRegisterOpen(false)}
+      onSuccess={() => {
+        setIsRegisterOpen(false);
+        setIsThankYouOpen(true);
+      }}
+    />
+    <ThankYouModal
+      isOpen={isThankYouOpen}
+      onClose={() => setIsThankYouOpen(false)}
+    />
     </>
   );
 }
