@@ -10,9 +10,21 @@ export const authOptions = {
   ],
   secret: process.env.NEXTAUTH_SECRET,
   callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.email = user.email;
+        token.name = user.name;
+        token.picture = user.image;
+      }
+      return token;
+    },
     async session({ session, token }) {
       if (session?.user) {
-        session.user.id = token.sub;
+        session.user.id = token.id || token.sub;
+        session.user.email = token.email || session.user.email;
+        session.user.name = token.name || session.user.name;
+        session.user.image = token.picture || session.user.image;
       }
       return session;
     },

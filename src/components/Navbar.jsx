@@ -1,17 +1,19 @@
 "use client";
 
 import React from 'react';
-import { Calendar, BookOpen, PlusCircle, Calculator, CalendarDays, LogOut, User, FileJson } from 'lucide-react';
+import { Calendar, BookOpen, PlusCircle, Calculator, CalendarDays, LogOut, User, FileJson, KeyRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import BackupRestoreModal from './BackupRestoreModal';
+import RegisterModal from './RegisterModal';
 
 export default function Navbar({ activeTab, setActiveTab }) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session, status } = useSession();
   const [isBackupOpen, setIsBackupOpen] = React.useState(false);
+  const [isRegisterOpen, setIsRegisterOpen] = React.useState(false);
 
   const tabs = [
     { id: 'lifetime', label: 'Ringkasan Lifetime', icon: Calculator },
@@ -26,6 +28,54 @@ export default function Navbar({ activeTab, setActiveTab }) {
       }
     } else {
       router.push(`/?tab=${tabId}`);
+    }
+  };
+
+  const [checkedEmails, setCheckedEmails] = React.useState({});
+
+  // Check user registration status whenever Google session is active
+  React.useEffect(() => {
+    const userEmail = session?.user?.email;
+    if (!userEmail || checkedEmails[userEmail]) return;
+
+    const checkUserRegistration = async () => {
+      try {
+        const res = await fetch('/api/check-user-exists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: userEmail }),
+        });
+
+        const data = await res.json();
+
+        // Mark email as checked to prevent loop
+        setCheckedEmails((prev) => ({ ...prev, [userEmail]: true }));
+
+        if (!res.ok || data.error) {
+          // If API returns an error, show popup error
+          alert('Terjadi kesalahan, kami sedang memperbaikinya');
+          return;
+        }
+
+        if (data.exists === false) {
+          // If API returns false, show RegisterModal.jsx
+          setIsRegisterOpen(true);
+        }
+        // If data.exists === true, let user stay signed in
+      } catch (err) {
+        console.error('Check user error:', err);
+        alert('Terjadi kesalahan, kami sedang memperbaikinya');
+      }
+    };
+
+    checkUserRegistration();
+  }, [session, checkedEmails]);
+
+  const handleRegisterClick = () => {
+    if (!session) {
+      signIn('google');
+    } else {
+      setIsRegisterOpen(true);
     }
   };
 
@@ -98,6 +148,15 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 <FileJson className="w-4 h-4 text-emerald-300" />
                 <span>Backup Data</span>
               </button>
+
+              <button
+                onClick={handleRegisterClick}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-bold border transition-colors whitespace-nowrap bg-amber-600 hover:bg-amber-500 text-white border-amber-500 shadow-sm"
+                title="Registrasi Kode Lisensi"
+              >
+                <KeyRound className="w-4 h-4 text-amber-100" />
+                <span>Daftar Lisensi</span>
+              </button>
             </nav>
 
           {/* User Auth Section */}
@@ -159,6 +218,7 @@ export default function Navbar({ activeTab, setActiveTab }) {
       </div>
     </header>
     <BackupRestoreModal isOpen={isBackupOpen} onClose={() => setIsBackupOpen(false)} />
+    <RegisterModal isOpen={isRegisterOpen} onClose={() => setIsRegisterOpen(false)} />
     </>
   );
 }
