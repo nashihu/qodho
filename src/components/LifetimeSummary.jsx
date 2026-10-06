@@ -157,6 +157,25 @@ export default function LifetimeSummary() {
 
   const confirmReset = () => {
     setCompleted({ subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 });
+    setPeriods([]);
+    setStartDate('');
+    setEndDate('');
+    setCustomTotalDays(null);
+    setYears(0);
+    setMonths(0);
+    setSelectedPrayers({
+      subuh: true,
+      dzuhur: true,
+      ashar: true,
+      maghrib: true,
+      isya: true,
+    });
+    try {
+      localStorage.removeItem('qodho_lifetime_data');
+    } catch (e) {
+      console.error('Failed to remove lifetime data on reset:', e);
+    }
+    window.dispatchEvent(new Event('qodho_updated'));
     setIsResetModalOpen(false);
   };
 
@@ -452,7 +471,7 @@ export default function LifetimeSummary() {
                       Reset Progress Qodho Lifetime
                     </h4>
                     <p className="text-xs text-rose-800/90 mt-1 max-w-xl">
-                      Mengembalikan seluruh hitungan sholat yang telah di-qodho menjadi 0. Konfigurasi tanggal, periode, dan target utang tidak akan terhapus.
+                      Mengembalikan seluruh hitungan sholat yang telah di-qodho menjadi 0. Konfigurasi tanggal, periode, dan target utang juga terhapus.
                     </p>
                   </div>
                   <button
@@ -482,7 +501,7 @@ export default function LifetimeSummary() {
               </h3>
             </div>
             <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-6">
-              Apakah Anda yakin ingin meriset seluruh hitungan sholat qodho yang telah diselesaikan menjadi <strong className="text-slate-800">0 kali</strong>? Data periode tanggal dan konfigurasi waktu Anda tidak akan terhapus.
+              Apakah Anda yakin ingin meriset seluruh hitungan sholat qodho yang telah diselesaikan menjadi <strong className="text-slate-800">0 kali</strong>? Data periode tanggal dan konfigurasi waktu Anda juga akan terhapus.
             </p>
             <div className="flex items-center justify-end gap-2.5">
               <button
