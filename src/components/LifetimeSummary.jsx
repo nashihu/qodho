@@ -23,6 +23,7 @@ import {
 import Link from 'next/link';
 import { computePeriodsRequirement } from '../utils/qodhoCalculator';
 import BackupRestoreModal from './BackupRestoreModal';
+import { useUserGuard } from '../context/UserGuardContext';
 
 const PRAYERS = [
   { id: 'subuh', name: 'Subuh', color: 'from-blue-600 to-indigo-700', badge: 'bg-blue-100 text-blue-800' },
@@ -33,6 +34,7 @@ const PRAYERS = [
 ];
 
 export default function LifetimeSummary() {
+  const { guardAction } = useUserGuard();
   const [periods, setPeriods] = useState([]);
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -149,34 +151,38 @@ export default function LifetimeSummary() {
     : 0;
 
   const handleIncrement = (prayerId, amount = 1) => {
-    setCompleted(prev => ({
-      ...prev,
-      [prayerId]: Math.max(0, (prev[prayerId] || 0) + amount)
-    }));
+    guardAction(() => {
+      setCompleted(prev => ({
+        ...prev,
+        [prayerId]: Math.max(0, (prev[prayerId] || 0) + amount)
+      }));
+    });
   };
 
   const confirmReset = () => {
-    setCompleted({ subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 });
-    setPeriods([]);
-    setStartDate('');
-    setEndDate('');
-    setCustomTotalDays(null);
-    setYears(0);
-    setMonths(0);
-    setSelectedPrayers({
-      subuh: true,
-      dzuhur: true,
-      ashar: true,
-      maghrib: true,
-      isya: true,
+    guardAction(() => {
+      setCompleted({ subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 });
+      setPeriods([]);
+      setStartDate('');
+      setEndDate('');
+      setCustomTotalDays(null);
+      setYears(0);
+      setMonths(0);
+      setSelectedPrayers({
+        subuh: true,
+        dzuhur: true,
+        ashar: true,
+        maghrib: true,
+        isya: true,
+      });
+      try {
+        localStorage.removeItem('qodho_lifetime_data');
+      } catch (e) {
+        console.error('Failed to remove lifetime data on reset:', e);
+      }
+      window.dispatchEvent(new Event('qodho_updated'));
+      setIsResetModalOpen(false);
     });
-    try {
-      localStorage.removeItem('qodho_lifetime_data');
-    } catch (e) {
-      console.error('Failed to remove lifetime data on reset:', e);
-    }
-    window.dispatchEvent(new Event('qodho_updated'));
-    setIsResetModalOpen(false);
   };
 
   const formatReadableDate = (dateStr) => {
@@ -188,6 +194,12 @@ export default function LifetimeSummary() {
     } catch {
       return dateStr;
     }
+  };
+
+  const handleBackupClick = () => {
+    guardAction(() => {
+      setIsBackupOpen(true);
+    });
   };
 
   return (
@@ -213,7 +225,7 @@ export default function LifetimeSummary() {
               <ArrowRight className="w-4 h-4" />
             </Link>
             <button
-              onClick={() => setIsBackupOpen(true)}
+              onClick={handleBackupClick}
               className="w-full sm:w-auto text-emerald-800 hover:bg-emerald-50 py-3 px-5 rounded-xl border border-emerald-200 transition-colors flex items-center justify-center gap-2 font-bold text-xs sm:text-sm bg-white active:scale-95"
             >
               <FileJson className="w-4 h-4 text-emerald-700" />
@@ -264,7 +276,7 @@ export default function LifetimeSummary() {
                 <span>Kalkulator Durasi</span>
               </Link>
               <button
-                onClick={() => setIsBackupOpen(true)}
+                onClick={handleBackupClick}
                 className="text-xs text-emerald-800 hover:bg-emerald-50 px-3.5 py-2.5 rounded-xl border border-emerald-200 transition-colors flex items-center gap-1.5 font-bold bg-emerald-50/50 active:scale-95"
                 title="Backup & Restore Data JSON"
               >

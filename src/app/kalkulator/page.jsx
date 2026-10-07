@@ -6,6 +6,7 @@ import { Calculator, ArrowLeft, Save, Info, RotateCcw, CheckCircle2, Calendar as
 import Link from 'next/link';
 import Navbar from '../../components/Navbar';
 import { computePeriodsRequirement } from '../../utils/qodhoCalculator';
+import { useUserGuard } from '../../context/UserGuardContext';
 
 const PRAYER_OPTIONS = [
   { id: 'subuh', label: 'Subuh', color: 'text-blue-600 bg-blue-50 border-blue-200' },
@@ -17,6 +18,7 @@ const PRAYER_OPTIONS = [
 
 export default function KalkulatorPage() {
   const router = useRouter();
+  const { guardAction, showAlert } = useUserGuard();
 
   // Helper to format date object to YYYY-MM-DD
   const formatDateToInput = (d) => {
@@ -145,64 +147,66 @@ export default function KalkulatorPage() {
 
   const handleSaveAndReturn = (e) => {
     e.preventDefault();
-    try {
-      let finalPeriods = [...periods];
+    guardAction(() => {
+      try {
+        let finalPeriods = [...periods];
 
-      // If user filled in the form, append it to periods
-      if (formDays > 0) {
-        const newPeriod = {
-          id: Date.now().toString(),
-          startDate,
-          endDate,
-          selectedPrayers
+        // If user filled in the form, append it to periods
+        if (formDays > 0) {
+          const newPeriod = {
+            id: Date.now().toString(),
+            startDate,
+            endDate,
+            selectedPrayers
+          };
+          finalPeriods.push(newPeriod);
+        }
+
+        if (finalPeriods.length === 0) {
+          showAlert('Silakan tentukan minimal 1 periode sholat terlewat.');
+          return;
+        }
+
+        const existing = localStorage.getItem('qodho_lifetime_data');
+        let completed = { subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 };
+        if (existing) {
+          const parsed = JSON.parse(existing);
+          if (parsed.completed) completed = parsed.completed; // PRESERVE COUNTER!
+        }
+
+        const merged = computePeriodsRequirement(finalPeriods);
+
+        const newData = {
+          periods: finalPeriods,
+          startDate: merged.minStartDate,
+          endDate: merged.maxEndDate,
+          totalDays: merged.totalDays,
+          selectedPrayers: {
+            subuh: merged.totalPrayers.subuh > 0,
+            dzuhur: merged.totalPrayers.dzuhur > 0,
+            ashar: merged.totalPrayers.ashar > 0,
+            maghrib: merged.totalPrayers.maghrib > 0,
+            isya: merged.totalPrayers.isya > 0,
+          },
+          completed // PRESERVED EXACTLY!
         };
-        finalPeriods.push(newPeriod);
+
+        localStorage.setItem('qodho_lifetime_data', JSON.stringify(newData));
+
+        // Dispatch custom event to notify home dashboard & calendar
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('qodho_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
+
+        setSavedSuccess(true);
+        setTimeout(() => {
+          router.push('/');
+        }, 450);
+      } catch (err) {
+        console.error('Failed to save calculator settings', err);
       }
-
-      if (finalPeriods.length === 0) {
-        alert('Silakan tentukan minimal 1 periode sholat terlewat.');
-        return;
-      }
-
-      const existing = localStorage.getItem('qodho_lifetime_data');
-      let completed = { subuh: 0, dzuhur: 0, ashar: 0, maghrib: 0, isya: 0 };
-      if (existing) {
-        const parsed = JSON.parse(existing);
-        if (parsed.completed) completed = parsed.completed; // PRESERVE COUNTER!
-      }
-
-      const merged = computePeriodsRequirement(finalPeriods);
-
-      const newData = {
-        periods: finalPeriods,
-        startDate: merged.minStartDate,
-        endDate: merged.maxEndDate,
-        totalDays: merged.totalDays,
-        selectedPrayers: {
-          subuh: merged.totalPrayers.subuh > 0,
-          dzuhur: merged.totalPrayers.dzuhur > 0,
-          ashar: merged.totalPrayers.ashar > 0,
-          maghrib: merged.totalPrayers.maghrib > 0,
-          isya: merged.totalPrayers.isya > 0,
-        },
-        completed // PRESERVED EXACTLY!
-      };
-
-      localStorage.setItem('qodho_lifetime_data', JSON.stringify(newData));
-
-      // Dispatch custom event to notify home dashboard & calendar
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('qodho_updated'));
-        window.dispatchEvent(new Event('storage'));
-      }
-
-      setSavedSuccess(true);
-      setTimeout(() => {
-        router.push('/');
-      }, 450);
-    } catch (err) {
-      console.error('Failed to save calculator settings', err);
-    }
+    });
   };
 
   const handleResetAll = () => {

@@ -2,8 +2,10 @@
 
 import React, { useState, useRef } from 'react';
 import { Download, Upload, ShieldCheck, FileJson, AlertTriangle, CheckCircle2, X } from 'lucide-react';
+import { useUserGuard } from '../context/UserGuardContext';
 
 export default function BackupRestoreModal({ isOpen, onClose }) {
+  const { guardAction } = useUserGuard();
   const [statusMessage, setStatusMessage] = useState(null); // { type: 'success' | 'error', text: '' }
   const [isRestoring, setIsRestoring] = useState(false);
   const fileInputRef = useRef(null);
@@ -12,53 +14,57 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
 
   // Handle Export / Backup JSON
   const handleExportBackup = () => {
-    try {
-      const lifetimeData = localStorage.getItem('qodho_lifetime_data');
-      const manualData = localStorage.getItem('qodho_manual_data');
+    guardAction(() => {
+      try {
+        const lifetimeData = localStorage.getItem('qodho_lifetime_data');
+        const manualData = localStorage.getItem('qodho_manual_data');
 
-      const backupObj = {
-        app: 'qodho-sholat-app',
-        version: '1.0',
-        exportedAt: new Date().toISOString(),
-        data: {
-          qodho_lifetime_data: lifetimeData ? JSON.parse(lifetimeData) : null,
-          qodho_manual_data: manualData ? JSON.parse(manualData) : []
-        }
-      };
+        const backupObj = {
+          app: 'qodho-sholat-app',
+          version: '1.0',
+          exportedAt: new Date().toISOString(),
+          data: {
+            qodho_lifetime_data: lifetimeData ? JSON.parse(lifetimeData) : null,
+            qodho_manual_data: manualData ? JSON.parse(manualData) : []
+          }
+        };
 
-      const jsonStr = JSON.stringify(backupObj, null, 2);
-      const blob = new Blob([jsonStr], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
+        const jsonStr = JSON.stringify(backupObj, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
 
-      const todayStr = new Date().toISOString().split('T')[0];
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `qodho_backup_${todayStr}.json`;
-      document.body.appendChild(link);
-      link.click();
+        const todayStr = new Date().toISOString().split('T')[0];
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `qodho_backup_${todayStr}.json`;
+        document.body.appendChild(link);
+        link.click();
 
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
 
-      setStatusMessage({
-        type: 'success',
-        text: 'File backup (.json) berhasil diunduh dan disimpan!'
-      });
-    } catch (err) {
-      console.error('Export failed:', err);
-      setStatusMessage({
-        type: 'error',
-        text: 'Gagal mengeksport file backup. Pastikan penyimpanan browser diizinkan.'
-      });
-    }
+        setStatusMessage({
+          type: 'success',
+          text: 'File backup (.json) berhasil diunduh dan disimpan!'
+        });
+      } catch (err) {
+        console.error('Export failed:', err);
+        setStatusMessage({
+          type: 'error',
+          text: 'Gagal mengeksport file backup. Pastikan penyimpanan browser diizinkan.'
+        });
+      }
+    });
   };
 
   // Trigger file picker
   const triggerFileInput = () => {
-    setStatusMessage(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
+    guardAction(() => {
+      setStatusMessage(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+    });
   };
 
   // Handle Import / Restore JSON File
@@ -98,16 +104,11 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
           lifetimePayload = parsed;
         }
 
-        if (!lifetimePayload && !manualPayload) {
-          throw new Error('File JSON tidak berisi data qodho yang valid');
-        }
-
-        const confirmRestore = window.confirm(
-          'Apakah Anda yakin ingin memulihkan data dari file ini?\nData saat ini di browser akan diperbarui dengan isi file backup.'
-        );
-
-        if (!confirmRestore) {
-          if (fileInputRef.current) fileInputRef.current.value = '';
+        if (!lifetimePayload && (!manualPayload || !Array.isArray(manualPayload))) {
+          setStatusMessage({
+            type: 'error',
+            text: 'Isi file JSON tidak sesuai dengan struktur cadangan Qodho App.'
+          });
           return;
         }
 
@@ -116,36 +117,38 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
         if (lifetimePayload) {
           localStorage.setItem('qodho_lifetime_data', JSON.stringify(lifetimePayload));
         }
-        if (manualPayload) {
+
+        if (manualPayload && Array.isArray(manualPayload)) {
           localStorage.setItem('qodho_manual_data', JSON.stringify(manualPayload));
         }
 
-        // Dispatch storage update events to notify all active React components
-        window.dispatchEvent(new Event('storage'));
-        window.dispatchEvent(new Event('qodho_updated'));
+        // Notify app to refresh
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('qodho_updated'));
+          window.dispatchEvent(new Event('storage'));
+        }
 
         setStatusMessage({
           type: 'success',
-          text: 'Data qodho sholat berhasil dipulihkan dari file backup!'
+          text: 'Data cadangan berhasil dipulihkan (restore)! Aplikasi akan memperbarui tampilan.'
         });
+
+        setTimeout(() => {
+          setIsRestoring(false);
+          onClose();
+        }, 1200);
+
       } catch (err) {
         console.error('Import failed:', err);
         setStatusMessage({
           type: 'error',
-          text: `Gagal memulihkan data: ${err.message || 'File JSON rusak atau tidak valid'}`
+          text: 'Gagal memproses file JSON. File mungkin rusak atau tidak valid.'
         });
       } finally {
-        setIsRestoring(false);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
       }
-    };
-
-    reader.onerror = () => {
-      setStatusMessage({
-        type: 'error',
-        text: 'Gagal membaca file dari perangkat Anda.'
-      });
-      if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     reader.readAsText(file);
@@ -153,16 +156,16 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 border border-slate-100 relative overflow-hidden">
+      <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full p-6 border border-slate-100 relative overflow-hidden space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="bg-emerald-100 p-2.5 rounded-2xl text-emerald-800">
-              <FileJson className="w-6 h-6" />
+              <FileJson className="w-6 h-6 text-emerald-700" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-slate-900">Backup & Restore Data</h3>
-              <p className="text-xs text-slate-500">Pindahkan data qodho antar browser / perangkat</p>
+              <h3 className="text-base font-bold text-slate-900">Backup & Restore Data JSON</h3>
+              <p className="text-xs text-slate-500">Amankan data hitungan qodho Anda ke file lokal</p>
             </div>
           </div>
           <button
@@ -173,18 +176,10 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
           </button>
         </div>
 
-        {/* Info Banner */}
-        <div className="my-4 bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex items-start gap-3">
-          <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-slate-600 leading-relaxed">
-            Data disimpan aman di <span className="font-semibold text-slate-800">localStorage</span> perangkat ini. Gunakan fitur ini untuk mengunduh salinan cadangan (.json) atau memulihkannya jika berpindah HP/Laptop.
-          </p>
-        </div>
-
-        {/* Alert status message */}
+        {/* Alert Status Message */}
         {statusMessage && (
           <div
-            className={`mb-4 p-3.5 rounded-2xl border flex items-center gap-3 text-xs font-medium animate-in slide-in-from-top-2 ${
+            className={`p-3.5 rounded-2xl border flex items-center gap-3 text-xs font-medium animate-in slide-in-from-top-2 ${
               statusMessage.type === 'success'
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
                 : 'bg-rose-50 border-rose-200 text-rose-900'
@@ -199,45 +194,63 @@ export default function BackupRestoreModal({ isOpen, onClose }) {
           </div>
         )}
 
-        {/* Hidden File Input */}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          accept=".json,application/json"
-          className="hidden"
-        />
+        {/* Backup Option Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Card 1: Backup (Export) */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between space-y-4 hover:border-emerald-300 transition-colors">
+            <div className="space-y-2">
+              <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-700">
+                <Download className="w-5 h-5" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900">Download Backup</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Unduh seluruh data qodho lifetime dan catatan udzur dalam format file <code className="bg-slate-200 px-1 py-0.5 rounded text-[11px] font-mono text-slate-700">.json</code>.
+              </p>
+            </div>
+            <button
+              onClick={handleExportBackup}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-3 rounded-xl shadow-xs border border-emerald-700 transition-all text-xs flex items-center justify-center gap-2 active:scale-95"
+            >
+              <Download className="w-4 h-4" />
+              <span>Ekspor JSON</span>
+            </button>
+          </div>
 
-        {/* Action Buttons */}
-        <div className="space-y-3 pt-2">
-          {/* Export / Download Backup */}
-          <button
-            onClick={handleExportBackup}
-            className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-3 px-4 rounded-2xl shadow-md border border-emerald-800 transition-all flex items-center justify-center gap-2.5 text-sm active:scale-[0.98]"
-          >
-            <Download className="w-4 h-4 text-emerald-200" />
-            <span>Unduh File Backup (.json)</span>
-          </button>
-
-          {/* Import / Restore Backup */}
-          <button
-            onClick={triggerFileInput}
-            disabled={isRestoring}
-            className="w-full bg-white hover:bg-slate-50 border-2 border-dashed border-emerald-300 hover:border-emerald-500 text-emerald-900 font-bold py-3 px-4 rounded-2xl shadow-xs transition-all flex items-center justify-center gap-2.5 text-sm disabled:opacity-50 active:scale-[0.98]"
-          >
-            <Upload className="w-4 h-4 text-emerald-700" />
-            <span>{isRestoring ? 'Memulihkan Data...' : 'Pulihkan Data (Upload .json)'}</span>
-          </button>
+          {/* Card 2: Restore (Import) */}
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col justify-between space-y-4 hover:border-emerald-300 transition-colors">
+            <div className="space-y-2">
+              <div className="w-9 h-9 bg-amber-100 rounded-xl flex items-center justify-center text-amber-700">
+                <Upload className="w-5 h-5" />
+              </div>
+              <h4 className="text-sm font-bold text-slate-900">Restore Data</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Pulihkan data dari file <code className="bg-slate-200 px-1 py-0.5 rounded text-[11px] font-mono text-slate-700">.json</code> cadangan yang telah Anda unduh sebelumnya.
+              </p>
+            </div>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              accept=".json,application/json"
+              className="hidden"
+            />
+            <button
+              onClick={triggerFileInput}
+              disabled={isRestoring}
+              className="w-full bg-white hover:bg-slate-100 text-slate-800 font-bold py-2.5 px-3 rounded-xl border border-slate-300 transition-all text-xs flex items-center justify-center gap-2 shadow-xs active:scale-95 disabled:opacity-50"
+            >
+              <Upload className="w-4 h-4 text-slate-600" />
+              <span>{isRestoring ? 'Memulihkan...' : 'Impor File JSON'}</span>
+            </button>
+          </div>
         </div>
 
-        {/* Footer Note */}
-        <div className="mt-5 pt-3 border-t border-slate-100 text-center">
-          <button
-            onClick={onClose}
-            className="text-xs text-slate-500 hover:text-slate-800 font-medium px-3 py-1.5 rounded-xl hover:bg-slate-100 transition-colors"
-          >
-            Tutup Windows
-          </button>
+        {/* Security Note Footer */}
+        <div className="pt-3 border-t border-slate-100 flex items-start gap-2.5 text-slate-500">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+          <p className="text-[11px] leading-relaxed">
+            Data cadangan disimpan secara lokal di perangkat Anda. Disarankan melakukan backup secara berkala untuk mencegah hilangnya riwayat qodho.
+          </p>
         </div>
       </div>
     </div>
