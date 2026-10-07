@@ -49,10 +49,11 @@ export function UserGuardProvider({ children }) {
     setAlertConfig((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
-  const saveUserCache = useCallback((emailStr, isRegisteredBool) => {
+  const saveUserCache = useCallback((emailStr, isRegisteredBool, ttlMs = 7 * 24 * 60 * 60 * 1000) => {
     try {
       const serverPubKey = process.env.NEXT_PUBLIC_SERVER_PUBLIC_KEY || 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJDOxpPvSiQClTvWDT1OujRiFa370WltNtTHHBiNHBNioXHLSdAQNiM2+pmua4F1ZUdpjSBEdvG6bp+VCUbHUIg==';
-      const payloadStr = JSON.stringify({ email: emailStr, isRegistered: isRegisteredBool });
+      const expiredAt = Date.now() + ttlMs;
+      const payloadStr = JSON.stringify({ email: emailStr, isRegistered: isRegisteredBool, expiredAt });
       const { encryptedData, clientPublicKey } = encryptText(payloadStr, serverPubKey);
       localStorage.setItem('user', JSON.stringify({ data: encryptedData, clientPublicKey }));
     } catch (err) {
@@ -96,14 +97,21 @@ export function UserGuardProvider({ children }) {
             }
 
             if (cachePayload?.email && typeof cachePayload?.isRegistered === 'boolean') {
-              setIsRegistered(cachePayload.isRegistered);
-              setCheckedEmails((prev) => ({ ...prev, [rawGoogleEmail]: true }));
-              setIsChecking(false);
+              const expiredAt = Number(cachePayload.expiredAt);
+              if (expiredAt && Date.now() > expiredAt) {
+                // Cache expired! Remove cache key and refresh from server
+                localStorage.removeItem('user');
+              } else {
+                // Valid Cache Hit!
+                setIsRegistered(cachePayload.isRegistered);
+                setCheckedEmails((prev) => ({ ...prev, [rawGoogleEmail]: true }));
+                setIsChecking(false);
 
-              if (cachePayload.isRegistered === false) {
-                setIsRegisterOpen(true);
+                if (cachePayload.isRegistered === false) {
+                  setIsRegisterOpen(true);
+                }
+                return;
               }
-              return;
             }
           }
         }

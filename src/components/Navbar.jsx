@@ -1,11 +1,10 @@
 "use client";
 
 import React from 'react';
-import { Calendar, BookOpen, PlusCircle, Calculator, CalendarDays, LogOut, User, FileJson, KeyRound } from 'lucide-react';
+import { Calendar, BookOpen, PlusCircle, Calculator, CalendarDays, LogOut, User } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import BackupRestoreModal from './BackupRestoreModal';
 import RegisterModal from './RegisterModal';
 import ThankYouModal from './ThankYouModal';
 import { useUserGuard } from '../context/UserGuardContext';
@@ -14,14 +13,12 @@ export default function Navbar({ activeTab, setActiveTab }) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [isBackupOpen, setIsBackupOpen] = React.useState(false);
 
   const {
     isRegisterOpen,
     setIsRegisterOpen,
     isThankYouOpen,
     setIsThankYouOpen,
-    clearUserCache,
     onRegisterSuccess,
   } = useUserGuard();
 
@@ -38,15 +35,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
       }
     } else {
       router.push(`/?tab=${tabId}`);
-    }
-  };
-
-  const handleRegisterClick = () => {
-    clearUserCache();
-    if (!session) {
-      signIn('google');
-    } else {
-      setIsRegisterOpen(true);
     }
   };
 
@@ -98,36 +86,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
                 <CalendarDays className="w-4 h-4 text-emerald-300" />
                 <span>Kalender</span>
               </Link>
-
-              <Link
-                href="/kalkulator"
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-bold border transition-colors whitespace-nowrap ${
-                  pathname === '/kalkulator'
-                    ? 'bg-emerald-600 text-white border-emerald-500 shadow-md'
-                    : 'bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-700'
-                }`}
-              >
-                <Calculator className="w-4 h-4 text-emerald-300" />
-                <span>Kalkulator</span>
-              </Link>
-
-              <button
-                onClick={() => setIsBackupOpen(true)}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-bold border transition-colors whitespace-nowrap bg-emerald-800 hover:bg-emerald-700 text-emerald-100 border-emerald-700 hover:text-white"
-                title="Backup & Restore Data JSON"
-              >
-                <FileJson className="w-4 h-4 text-emerald-300" />
-                <span>Backup Data</span>
-              </button>
-
-              <button
-                onClick={handleRegisterClick}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs md:text-sm font-bold border transition-colors whitespace-nowrap bg-amber-600 hover:bg-amber-500 text-white border-amber-500 shadow-sm"
-                title="Registrasi Kode Lisensi"
-              >
-                <KeyRound className="w-4 h-4 text-amber-100" />
-                <span>Daftar Lisensi</span>
-              </button>
             </nav>
 
             {/* User Auth Section */}
@@ -189,7 +147,6 @@ export default function Navbar({ activeTab, setActiveTab }) {
         </div>
       </header>
 
-      <BackupRestoreModal isOpen={isBackupOpen} onClose={() => setIsBackupOpen(false)} />
       <RegisterModal
         isOpen={isRegisterOpen}
         onClose={() => setIsRegisterOpen(false)}
