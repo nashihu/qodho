@@ -51,7 +51,7 @@ export function UserGuardProvider({ children }) {
 
   const saveUserCache = useCallback((emailStr, isRegisteredBool, ttlMs = 7 * 24 * 60 * 60 * 1000) => {
     try {
-      const serverPubKey = process.env.NEXT_PUBLIC_SERVER_PUBLIC_KEY || 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJDOxpPvSiQClTvWDT1OujRiFa370WltNtTHHBiNHBNioXHLSdAQNiM2+pmua4F1ZUdpjSBEdvG6bp+VCUbHUIg==';
+      const serverPubKey = process.env.NEXT_PUBLIC_SERVER_PUBLIC_KEY || 'hello hacker';
       const expiredAt = Date.now() + ttlMs;
       const payloadStr = JSON.stringify({ email: emailStr, isRegistered: isRegisteredBool, expiredAt });
       const { encryptedData, clientPublicKey } = encryptText(payloadStr, serverPubKey);

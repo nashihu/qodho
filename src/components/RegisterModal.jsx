@@ -62,7 +62,7 @@ export default function RegisterModal({ isOpen, onClose, onSuccess }) {
 
       // Encrypt user email, isRegistered: true, and expiredAt timestamp into localStorage key 'user'
       try {
-        const serverPubKey = process.env.NEXT_PUBLIC_SERVER_PUBLIC_KEY || 'MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEJDOxpPvSiQClTvWDT1OujRiFa370WltNtTHHBiNHBNioXHLSdAQNiM2+pmua4F1ZUdpjSBEdvG6bp+VCUbHUIg==';
+        const serverPubKey = process.env.NEXT_PUBLIC_SERVER_PUBLIC_KEY || 'dear hacker';
         const expiredAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days TTL
         const payloadStr = JSON.stringify({ email: userEmail, isRegistered: true, expiredAt });
         const { encryptedData, clientPublicKey } = encryptText(payloadStr, serverPubKey);
