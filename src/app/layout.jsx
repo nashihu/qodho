@@ -2,8 +2,10 @@ import './globals.css';
 import AuthProvider from '../components/AuthProvider';
 import { UserGuardProvider } from '../context/UserGuardContext';
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'httpx://qodho.netlify.app';
+
 export const metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://qodho.netlify.app'),
+  metadataBase: new URL(siteUrl),
   title: 'Qodho Tracker - Aplikasi Hitung dan Pelunas Hutang Sholat Fardhu',
   description: 'Catat dan lunasi utang sholat fardhu secara terstruktur. Dilengkapi kalkulator qodho lifetime dan catatan udzur.',
   keywords: ['qodho sholat', 'sholat fardhu', 'sholat tasbih', 'hitung qodho', 'bacaan sholat', 'pelunas utang sholat'],
@@ -16,7 +18,7 @@ export const metadata = {
   openGraph: {
     title: 'Qodho Tracker - Aplikasi Hitung & Pelunas Sholat Fardhu',
     description: 'Catat dan lunasi utang sholat fardhu secara terstruktur.',
-    url: 'https://qodho.netlify.app',
+    url: siteUrl,
     siteName: 'Qodho Tracker',
     images: [
       {
