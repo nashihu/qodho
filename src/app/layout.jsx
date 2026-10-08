@@ -3,14 +3,37 @@ import AuthProvider from '../components/AuthProvider';
 import { UserGuardProvider } from '../context/UserGuardContext';
 
 export const metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://qodho.netlify.app'),
   title: 'Qodho Tracker - Aplikasi Hitung dan Pelunas Hutang Sholat Fardhu',
-  description: 'Aplikasi pelacak qodho sholat fardhu lifetime dan karena udzur, dilengkapi artikel panduan sholat dan sholat tasbih.',
-  keywords: ['qodho sholat', 'sholat fardhu', 'sholat tasbih', 'hitung qodho', 'bacaan sholat'],
+  description: 'Catat dan lunasi utang sholat fardhu secara terstruktur. Dilengkapi kalkulator qodho lifetime dan catatan udzur.',
+  keywords: ['qodho sholat', 'sholat fardhu', 'sholat tasbih', 'hitung qodho', 'bacaan sholat', 'pelunas utang sholat'],
   authors: [{ name: 'Qodho App Team' }],
+  icons: {
+    icon: '/sholat.jpg',
+    shortcut: '/sholat.jpg',
+    apple: '/sholat.jpg',
+  },
   openGraph: {
     title: 'Qodho Tracker - Aplikasi Hitung & Pelunas Sholat Fardhu',
     description: 'Catat dan lunasi utang sholat fardhu secara terstruktur.',
+    url: 'https://qodho.netlify.app',
+    siteName: 'Qodho Tracker',
+    images: [
+      {
+        url: '/sholat.jpg',
+        width: 1200,
+        height: 630,
+        alt: 'Qodho Tracker - Aplikasi Hitung & Pelunas Sholat Fardhu',
+      },
+    ],
+    locale: 'id_ID',
     type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Qodho Tracker - Aplikasi Hitung & Pelunas Sholat Fardhu',
+    description: 'Catat dan lunasi utang sholat fardhu secara terstruktur.',
+    images: ['/sholat.jpg'],
   },
 };
 
